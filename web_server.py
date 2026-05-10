@@ -37,7 +37,7 @@ runtime_config = {
     "price_range_pct": GRID.get("price_range_pct", 0.02),
     "amount_per_grid": GRID.get("amount_per_grid", 200),
     "check_interval": GRID.get("check_interval", 3),
-    "auto_optimize": False,
+    "auto_optimize": True,
     "usage_pct": DEFAULT_USAGE_PCT * 100,
     "leverage": DEFAULT_LEVERAGE,
 }
@@ -45,6 +45,12 @@ runtime_config = {
 # 交易日志
 trade_log = []
 MAX_LOG = 200
+
+# 自动优化状态追踪（用于检测参数变化）
+_last_report = {"grid_count": 0, "range_pct": 0, "amount_per_grid": 0}
+_analysis_counter = 0
+# 飞书 Webhook URL（可选，在仪表盘设置）
+FEISHU_WEBHOOK = os.environ.get("FEISHU_WEBHOOK", "")
 
 
 def _init_bot(force_new=False):
@@ -163,7 +169,7 @@ def api_set_config():
         return jsonify({'error': 'no data'}), 400
 
     changed = False
-    for key in ('symbol', 'mode', 'grid_count', 'price_range_pct', 'amount_per_grid', 'check_interval', 'auto_optimize', 'usage_pct', 'leverage'):
+    for key in ('symbol', 'mode', 'grid_count', 'price_range_pct', 'amount_per_grid', 'check_interval', 'auto_optimize', 'usage_pct', 'leverage', 'feishu_webhook'):
         if key in data:
             val = data[key]
             if key == 'grid_count' or key == 'amount_per_grid' or key == 'check_interval':
@@ -378,6 +384,114 @@ def api_control():
 
 
 # ============================================================
+# 飞书 Webhook 通知
+# ============================================================
+
+def _send_feishu_notify(msg, webhook_url=None):
+    url = webhook_url or runtime_config.get("feishu_webhook", "")
+    if not url:
+        return False
+    try:
+        import urllib.request
+        payload = json.dumps({"msg_type": "interactive", "card": {
+            "header": {"title": {"tag": "plain_text", "content": "🤖 NovaGrid 优化报告"},
+                       "template": "blue"},
+            "elements": [{"tag": "markdown", "content": msg}]
+        }}).encode()
+        req = urllib.request.Request(url, data=payload,
+            headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=5)
+        return True
+    except Exception:
+        return False
+
+
+def _run_optimize():
+    """运行一次完整优化分析，返回是否有参数变更"""
+    global _last_report, _analysis_counter
+    sym = runtime_config["symbol"]
+
+    try:
+        analysis = market_analyzer.analyze(sym)
+    except Exception:
+        return False
+    if not analysis:
+        return False
+
+    market_grids = analysis.get("optimal_grid_count", runtime_config["grid_count"])
+    market_range = analysis.get("optimal_range_pct", runtime_config["price_range_pct"] * 100) / 100
+
+    # 资金约束
+    try:
+        cap = capital_manager.analyze(
+            sym, market_grids,
+            usage_pct=runtime_config.get("usage_pct", 70) / 100,
+            leverage=runtime_config.get("leverage", 3))
+    except Exception:
+        cap = None
+
+    # 计算最终参数
+    final_grids = market_grids
+    if cap and cap.get("suggested_grid_count", 0) > 0:
+        final_grids = min(market_grids, cap["suggested_grid_count"])
+        final_grids = max(final_grids // 2 * 2, 4)
+
+    final_range = market_range
+    final_amount = runtime_config["amount_per_grid"]
+    if cap and cap.get("amount_per_grid", 0) > 0:
+        final_amount = cap["amount_per_grid"]
+
+    new_params = {"grid_count": final_grids, "price_range_pct": final_range}
+    if cap and cap.get("amount_per_grid", 0) > 0:
+        new_params["amount_per_grid"] = final_amount
+
+    # 检测变化
+    range_changed = abs(final_range - _last_report["range_pct"]) > 0.001
+    grids_changed = final_grids != _last_report["grid_count"]
+    amount_changed = final_amount != _last_report["amount_per_grid"]
+    anything_changed = range_changed or grids_changed or amount_changed
+
+    # 更新报告缓存
+    _last_report = {"grid_count": final_grids, "range_pct": final_range, "amount_per_grid": final_amount}
+    
+    auto_enabled = runtime_config.get("auto_optimize", False)
+
+    if anything_changed:
+        # 构造通知消息
+        changes = []
+        if grids_changed:
+            changes.append(f"网格数: {_last_report['grid_count']} → {final_grids}")
+        if amount_changed:
+            changes.append(f"每格数量: {_last_report['amount_per_grid']} → {final_amount} DOGE")
+        if range_changed:
+            changes.append(f"范围: {_last_report['range_pct']*100:.1f}% → {final_range*100:.1f}%")
+
+        msg_lines = [
+            f"**{sym}** 当前价格 **${analysis.get('current_price', 0):.5f}**",
+            f"📊 波动率: {analysis.get('volatility_pct', 0)}%  |  ADX: {analysis.get('adx', 0)}  |  趋势: {analysis.get('trend', '--')}",
+            f"""
+📋 **推荐调整：**""",
+        ] + [f"  • {c}" for c in changes]
+        
+        if auto_enabled:
+            msg_lines.append(f"\n✅ 已自动应用调整")
+        else:
+            msg_lines.append(f"\n⚙️ 自动优化已关闭，请在仪表盘手动应用")
+
+        msg = "\n".join(msg_lines)
+        _send_feishu_notify(msg)
+        print(f"[OPTIMIZE] {changes}")
+
+        if auto_enabled:
+            for k, v in new_params.items():
+                runtime_config[k] = v
+            bot.update_params(new_params)
+            return True
+
+    return False
+
+
+# ============================================================
 # 后台循环
 # ============================================================
 
@@ -404,54 +518,12 @@ def _bot_loop():
             if len(trade_log) > MAX_LOG:
                 trade_log[:] = trade_log[-MAX_LOG:]
 
-        # 自动优化：每 10 个 tick 检查一次
+        # 自动优化：每 600 个 tick (~30分钟) 做一次完整分析
         auto_optimize_counter += 1
-        if runtime_config.get('auto_optimize') and auto_optimize_counter >= 10:
+        if auto_optimize_counter >= 600:
             auto_optimize_counter = 0
             try:
-                analysis = market_analyzer.analyze(runtime_config['symbol'])
-                if analysis:
-                    market_grids = analysis['optimal_grid_count']
-                    market_range = analysis['optimal_range_pct'] / 100
-
-                    # 资金量约束分析（协调市场和资金两方面的建议）
-                    try:
-                        cap = capital_manager.analyze(
-                            runtime_config['symbol'],
-                            market_grids,
-                            usage_pct=runtime_config.get('usage_pct', 70) / 100,
-                            leverage=runtime_config.get('leverage', 3)
-                        )
-                    except Exception:
-                        cap = None
-
-                    # 资金约束下的网格数（取市场和资金的最小值）
-                    final_grids = market_grids
-                    if cap and 'suggested_grid_count' in cap:
-                        final_grids = min(market_grids, cap['suggested_grid_count'])
-                        final_grids = max(final_grids // 2 * 2, 4)
-
-                    # 范围保持市场推荐值不变 — 网格数降低只是让每格资金更集中
-                    # 不要缩小范围！否则网格会被波动打穿
-                    final_range = market_range
-
-                    new_params = {
-                        'grid_count': final_grids,
-                        'price_range_pct': final_range,
-                    }
-
-                    # 资金量计算每格数量
-                    if cap and cap.get('amount_per_grid', 0) > 0:
-                        new_params['amount_per_grid'] = cap['amount_per_grid']
-
-                    # 只在参数有显著变化时才更新
-                    range_changed = abs(new_params['price_range_pct'] - runtime_config['price_range_pct']) > 0.002
-                    grids_changed = new_params['grid_count'] != runtime_config['grid_count']
-                    amount_changed = 'amount_per_grid' in new_params and new_params['amount_per_grid'] != runtime_config.get('amount_per_grid')
-                    if range_changed or grids_changed or amount_changed:
-                        for k, v in new_params.items():
-                            runtime_config[k] = v
-                        bot.update_params(new_params)
+                _run_optimize()
             except Exception:
                 pass
 
@@ -477,4 +549,5 @@ if __name__ == '__main__':
     print(f"  Symbol: {runtime_config['symbol']}, Mode: {runtime_config['mode']}")
     print("=" * 50 + "\n")
     _auto_start()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    PORT = int(os.environ.get('PORT', 5002))
+app.run(host='0.0.0.0', port=PORT, debug=False)

@@ -13,6 +13,7 @@ from datetime import datetime
 from config import GRID, RISK, FEES, DATA_DIR, LOG_DIR, PAPER_TRADING
 from okx_market import get_price
 from okx_trade import place_order, set_leverage
+from strategies.signal_filter import get_signal as _get_signal
 
 # 永续合约映射（现货符号 → 永续合约符号）
 SWAP_INSTRUMENTS = {
@@ -231,6 +232,15 @@ class GridBot:
             return result
 
         fee_rate = FEES["default"]
+
+        # 获取信号过滤值
+        try:
+            sig = _get_signal(self.symbol)
+            signal_bias = sig.get("bias", 0)
+            signal_confidence = sig.get("confidence", "low")
+        except Exception:
+            signal_bias = 0
+            signal_confidence = "low"
 
         # ─── 1️⃣ 平仓检查：LONG 涨到目标位 / SHORT 跌到目标位 ───
         for key in list(self.positions.keys()):

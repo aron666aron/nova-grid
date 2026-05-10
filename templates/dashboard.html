@@ -247,6 +247,48 @@
       <div class="stat-row"><span class="stat-label">已实现 PnL</span><span class="stat-value" id="okxRealized">--</span></div>
       <div class="stat-row"><span class="stat-label" style="font-weight:700;">OKX 总盈亏</span><span class="stat-value" id="okxTotal" style="font-weight:700;">--</span></div>
     </div>
+    <!-- 参数调优说明 -->
+    <div class="card" id="optLogicCard">
+      <h2>🧠 自动调优原理</h2>
+      <div class="stat-row" style="flex-wrap:wrap;gap:4px;margin-bottom:6px;">
+        <span style="color:#8b949e;font-size:12px;line-height:1.6;">
+        <b style="color:#58a6ff;">📐 网格数 (grid_count)</b><br>
+        根据 ADX（趋势强度）动态调整：<br>
+        • 强趋势 (ADX>30) → 减少网格 → 每格吃更大波动<br>
+        • 震荡市 (ADX<20) → 增加网格 → 捕获更多微波动<br>
+        • 同时受资金约束：小资金 → 少网格<br>
+        <span style="color:#8b949e;">✅ 强趋势少发单减少磨损 | ❌ 网格少资金利用率低</span><br><br>
+
+        <b style="color:#58a6ff;">📏 网格范围 (price_range_pct)</b><br>
+        根据 ATR（平均真实波幅）自动缩放：<br>
+        • 波动大 → 扩大范围 → 防止价格出界<br>
+        • 波动小 → 缩小范围 → 网格间距更细<br>
+        <span style="color:#8b949e;">✅ 自适应行情 | ❌ 范围变宽单格利润降低</span><br><br>
+
+        <b style="color:#58a6ff;">💰 每格数量 (amount_per_grid)</b><br>
+        根据 OKX 账户余额 × 杠杆 × 使用率计算：<br>
+        • 公式：余额 × 杠杆 × 70% ÷ (网格数 × 2)<br>
+        • 例如 $14.36 × 3× ÷ 0.7 ÷ 12格 = 每格 ≈30 DOGE<br>
+        <span style="color:#8b949e;">✅ 永不爆仓 | ❌ 小资金每格利润微薄</span><br><br>
+
+        <b style="color:#58a6ff;">📊 信号过滤 (Signal Filter)</b><br>
+        多因子综合判断：RSI + EMA 趋势 + ADX + 成交量<br>
+        • 偏多信号 → 优先做空（高位接回）<br>
+        • 偏空信号 → 优先做多（低吸高抛）<br>
+        • 信号置信度低 → 双向正常交易<br>
+        <span style="color:#8b949e;">✅ 顺势增强 | ❌ 信号滞后可能错过机会</span><br><br>
+
+        <b style="color:#58a6ff;">🛡️ 资金约束 (Capital Manager)</b><br>
+        • 限制最大活跃持仓数（防止保证金不足）<br>
+        • 清算缓冲保护（距强平 >30%）<br>
+        • 实盘自动限制，模拟模式跳过<br>
+        <span style="color:#8b949e;">✅ 零爆仓风险 | ❌ 保守策略利润低</span>
+        </span>
+      </div>
+      <div class="stat-row" style="border-top:1px solid #30363d;padding-top:8px;margin-top:4px;">
+        <span style="color:#8b949e;font-size:11px;">⏱ 优化周期：每 30 分钟自动重新分析一次</span>
+      </div>
+    </div>
   </div>
 
   <!-- Row 2: Settings + Market Analysis + Capital -->

@@ -1,0 +1,1 @@
+﻿#!/usr/bin/env bash# NovaGrid - 鍋滄鑴氭湰PID=$(lsof -t -i:5000 2>/dev/null)if [ -n "$PID" ]; then    echo "馃洃 鍋滄 NovaGrid (PID: $PID)..."    kill $PID 2>/dev/null    sleep 1    if kill -0 $PID 2>/dev/null; then        kill -9 $PID 2>/dev/null        echo "   鈿?宸插己鍒跺仠姝?    else        echo "   鉁?宸插仠姝?    fielse    echo "鈩癸笍  NovaGrid 鏈湪杩愯"fi

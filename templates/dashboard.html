@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>双向网格量化看板</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+    background: #0f1117;
+    color: #e1e4e8;
+    min-height: 100vh;
+  }
+  .header {
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    padding: 12px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .header h1 { font-size: 20px; font-weight: 600; }
+  .header h1 span { color: #58a6ff; }
+  .header-right { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-paper { background: #1a3a2a; color: #3fb950; border: 1px solid #238636; }
+  .badge-live { background: #3a1a1a; color: #f85149; border: 1px solid #da3633; }
+  .btn {
+    padding: 6px 16px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    background: #21262d;
+    color: #e1e4e8;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s; white-space: nowrap;
+  }
+  .btn:hover { background: #30363d; }
+  .btn-start { background: #238636; border-color: #2ea043; }
+  .btn-start:hover { background: #2ea043; }
+  .btn-stop { background: #da3633; border-color: #f85149; }
+  .btn-stop:hover { background: #f85149; }
+  .btn-primary { background: #1f6feb; border-color: #388bfd; color: #fff; }
+  .btn-primary:hover { background: #388bfd; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 20px;
+  }
+  .card h2 {
+    font-size: 13px;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+  }
+  .price-display {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .price-up { color: #3fb950; }
+  .price-down { color: #f85149; }
+
+  .stat-row {
+    display: flex; justify-content: space-between;
+    padding: 6px 0; border-bottom: 1px solid #21262d;
+  }
+  .stat-row:last-child { border: none; }
+  .stat-label { color: #8b949e; font-size: 13px; }
+  .stat-value { font-weight: 600; font-family: 'SF Mono', monospace; font-size: 14px; }
+  .stat-value.green { color: #3fb950; }
+  .stat-value.red { color: #f85149; }
+  .stat-value.yellow { color: #d29922; }
+
+  .grid-visual { position: relative; height: 340px; overflow-y: auto; border-radius: 6px; }
+  .grid-line {
+    display: flex; align-items: center; padding: 5px 10px;
+    border-radius: 3px; font-size: 12px; font-family: 'SF Mono', monospace; margin-bottom: 2px;
+  }
+  .grid-line.long-open { background: rgba(63,185,80,0.12); border-left: 3px solid #3fb950; }
+  .grid-line.short-open { background: rgba(248,81,73,0.12); border-left: 3px solid #f85149; }
+  .grid-line.empty { opacity: 0.45; }
+  .grid-line .idx { width: 28px; color: #8b949e; font-size: 11px; }
+  .grid-line .price { flex: 1; }
+  .grid-line .tag { padding: 1px 5px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+  .tag-long { background: #238636; color: #fff; }
+  .tag-short { background: #da3633; color: #fff; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; padding: 8px 10px;
+    color: #8b949e; font-size: 11px; text-transform: uppercase;
+    border-bottom: 1px solid #30363d;
+  }
+  td {
+    padding: 8px 10px; border-bottom: 1px solid #21262d;
+    font-family: 'SF Mono', monospace; font-size: 12px;
+  }
+  .trade-buy-long { color: #3fb950; }
+  .trade-sell-short { color: #f85149; }
+  .trade-hold { color: #8b949e; }
+  .fee { color: #d29922; }
+  .pnl-positive { color: #3fb950; }
+  .pnl-negative { color: #f85149; }
+
+  .wide { grid-column: span 2; }
+  .full { grid-column: span 3; }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: 1fr; }
+    .wide, .full { grid-column: span 1; }
+  }
+
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot-green { background: #3fb950; }
+  .dot-red { background: #f85149; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:0.4 } }
+
+  .side-section { margin-top: 8px; padding: 8px; border-radius: 6px; }
+  .side-long { border: 1px solid rgba(63,185,80,0.3); background: rgba(63,185,80,0.05); }
+  .side-short { border: 1px solid rgba(248,81,73,0.3); background: rgba(248,81,73,0.05); }
+  .side-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .side-label.long-color { color: #3fb950; }
+  .side-label.short-color { color: #f85149; }
+
+  /* 设置面板样式 */
+  .settings-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px solid #21262d; gap: 8px;
+  }
+  .settings-row:last-child { border: none; }
+  .settings-row label { color: #8b949e; font-size: 13px; min-width: 70px; }
+  .settings-row select, .settings-row input {
+    background: #0f1117; border: 1px solid #30363d; border-radius: 6px;
+    color: #e1e4e8; padding: 5px 10px; font-size: 13px;
+    font-family: 'SF Mono', monospace; flex: 1; max-width: 180px;
+  }
+  .settings-row select { cursor: pointer; }
+  .settings-row select:focus, .settings-row input:focus { outline: none; border-color: #58a6ff; }
+  .mode-toggle {
+    display: flex; border: 1px solid #30363d; border-radius: 6px; overflow: hidden;
+  }
+  .mode-toggle button {
+    padding: 5px 14px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 500;
+    transition: all 0.2s;
+  }
+  .mode-toggle .mode-paper {
+    background: #0f1117; color: #8b949e;
+  }
+  .mode-toggle .mode-live {
+    background: #0f1117; color: #8b949e;
+  }
+  .mode-toggle .active-paper {
+    background: #238636; color: #fff;
+  }
+  .mode-toggle .active-live {
+    background: #da3633; color: #fff;
+  }
+  .save-msg {
+    font-size: 12px; padding: 4px 0; min-height: 20px;
+  }
+  .save-msg.success { color: #3fb950; }
+  .save-msg.error { color: #f85149; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>⚡</span> 双向网格看板</h1>
+  <div class="header-right">
+    <span id="modeBadge" class="badge badge-paper">模拟模式</span>
+    <span id="runStatus"><span class="dot dot-red"></span>已停止</span>
+    <button id="btnStart" class="btn btn-start" onclick="control('start')">▶ 启动</button>
+    <button id="btnStop" class="btn btn-stop" onclick="control('stop')" style="display:none">⏹ 停止</button>
+  </div>
+</div>
+
+<div class="container">
+  <!-- Row 1: Price + Stats + Side Breakdown + Settings -->
+  <div class="grid">
+    <div class="card">
+      <h2>实时价格</h2>
+      <div id="priceDisplay" class="price-display">--</div>
+      <div style="margin-top:4px; font-size:12px; color:#8b949e;"><span id="priceChange"></span></div>
+    </div>
+
+    <div class="card">
+      <h2>策略统计</h2>
+      <div class="stat-row"><span class="stat-label">交易对</span><span class="stat-value" id="statSymbol">--</span></div>
+      <div class="stat-row"><span class="stat-label">网格</span><span class="stat-value" id="statGrids">--</span></div>
+      <div class="stat-row"><span class="stat-label">价格区间</span><span class="stat-value" id="statRange">--</span></div>
+      <div class="stat-row"><span class="stat-label">持倉→多</span><span class="stat-value green" id="statLongPos">0</span></div>
+      <div class="stat-row"><span class="stat-label">持倉→空</span><span class="stat-value red" id="statShortPos">0</span></div>
+      <div class="stat-row"><span class="stat-label">今日交易</span><span class="stat-value" id="statTrades">--</span></div>
+      <div class="stat-row"><span class="stat-label" style="font-weight:700;">净利润</span><span class="stat-value" id="statNetPnl" style="font-weight:700;">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>多空盈亏明细</h2>
+      <div class="side-section side-long">
+        <div class="side-label long-color">▲ 做多</div>
+        <div class="stat-row"><span class="stat-label">持仓</span><span class="stat-value green" id="longPosCount">0</span></div>
+        <div class="stat-row"><span class="stat-label">毛利</span><span class="stat-value" id="longPnl">--</span></div>
+        <div class="stat-row"><span class="stat-label">手续费</span><span class="stat-value yellow" id="longFees">--</span></div>
+        <div class="stat-row"><span class="stat-label" style="font-weight:700;">净利</span><span class="stat-value" id="longNet" style="font-weight:700;">--</span></div>
+        <div class="stat-row okx-real-row" id="longOKXRow" style="display:none;">
+          <span class="stat-label">OKX UPL</span>
+          <span class="stat-value" id="longOKXUpl">--</span>
+          <span class="stat-label" style="margin-left:12px;">OKX 已实现</span>
+          <span class="stat-value" id="longOKXRealized">--</span>
+        </div>
+      </div>
+      <div class="side-section side-short" style="margin-top:8px;">
+        <div class="side-label short-color">▼ 做空</div>
+        <div class="stat-row"><span class="stat-label">持仓</span><span class="stat-value red" id="shortPosCount">0</span></div>
+        <div class="stat-row"><span class="stat-label">毛利</span><span class="stat-value" id="shortPnl">--</span></div>
+        <div class="stat-row"><span class="stat-label">手续费</span><span class="stat-value yellow" id="shortFees">--</span></div>
+        <div class="stat-row"><span class="stat-label" style="font-weight:700;">净利</span><span class="stat-value" id="shortNet" style="font-weight:700;">--</span></div>
+        <div class="stat-row okx-real-row" id="shortOKXRow" style="display:none;">
+          <span class="stat-label">OKX UPL</span>
+          <span class="stat-value" id="shortOKXUpl">--</span>
+          <span class="stat-label" style="margin-left:12px;">OKX 已实现</span>
+          <span class="stat-value" id="shortOKXRealized">--</span>
+        </div>
+      </div>
+    </div>
+    <!-- OKX 真实盈亏汇总 -->
+    <div class="card" id="okxSummaryCard" style="display:none;">
+      <h2>📊 OKX 真实盈亏</h2>
+      <div class="stat-row"><span class="stat-label">未实现 UPL</span><span class="stat-value" id="okxUnrealized">--</span></div>
+      <div class="stat-row"><span class="stat-label">已实现 PnL</span><span class="stat-value" id="okxRealized">--</span></div>
+      <div class="stat-row"><span class="stat-label" style="font-weight:700;">OKX 总盈亏</span><span class="stat-value" id="okxTotal" style="font-weight:700;">--</span></div>
+    </div>
+  </div>
+
+  <!-- Row 2: Settings + Market Analysis + Capital -->
+  <div class="grid">
+    <div class="card">
+      <h2>⚙️ 策略设置</h2>
+      <div class="settings-row">
+        <label>币种</label>
+        <select id="cfgSymbol"></select>
+      </div>
+      <div class="settings-row">
+        <label>模式</label>
+        <div class="mode-toggle" id="modeToggle">
+          <button class="mode-paper active-paper" data-mode="paper" onclick="setMode('paper')">🟢 模拟</button>
+          <button class="mode-live" data-mode="live" onclick="setMode('live')">🔴 实盘</button>
+        </div>
+      </div>
+      <div class="settings-row">
+        <label>网格数</label>
+        <input type="number" id="cfgGridCount" min="4" max="100" step="2">
+      </div>
+      <div class="settings-row">
+        <label>范围 ±%</label>
+        <input type="number" id="cfgRange" min="0.5" max="10" step="0.5">
+      </div>
+      <div class="settings-row">
+        <label>每格数量</label>
+        <input type="number" id="cfgAmount" min="1" step="1">
+      </div>
+      <div class="settings-row">
+        <label>间隔(秒)</label>
+        <input type="number" id="cfgInterval" min="1" max="30" step="1">
+      </div>
+      <div class="settings-row" style="border:none; padding-top:12px;">
+        <button id="saveConfigBtn" class="btn btn-primary" onclick="saveConfig()" style="width:100%;">💾 保存并重启</button>
+      </div>
+      <div id="saveMsg" class="save-msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>📊 市场分析</h2>
+      <div class="stat-row">
+        <span class="stat-label">波动率(ATR)</span>
+        <span class="stat-value" id="maVolatility">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">趋势</span>
+        <span class="stat-value" id="maTrend">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">强度(ADX)</span>
+        <span class="stat-value" id="maAdx">--</span>
+      </div>
+      <div class="stat-row" style="border-bottom:1px solid #30363d;">
+        <span class="stat-label" style="font-weight:700;">市场→资金→最终</span>
+        <span class="stat-value" style="font-weight:700;color:#58a6ff;">当前</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">范围 ±%</span>
+        <span class="stat-value" id="maRange">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">网格数</span>
+        <span class="stat-value" id="maGrids">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">步长 %</span>
+        <span class="stat-value" id="maStep">--</span>
+      </div>
+      <div class="stat-row" style="border-bottom:2px solid #30363d;">
+        <span class="stat-label" style="color:#3fb950;">利润率 vs 手续费</span>
+        <span class="stat-value green" id="maProfitRatio">--</span>
+      </div>
+      <div class="stat-row" id="maCapitalRow" style="display:none;">
+        <span class="stat-label" style="color:#f0883e;">💰 资金限制</span>
+        <span class="stat-value yellow" id="maCapitalLimit">--</span>
+      </div>
+      <div class="settings-row" style="border:none; padding-top:10px;">
+        <label style="min-width:auto;">🤖 自动优化</label>
+        <button id="autoOptBtn" class="btn" onclick="toggleAutoOptimize()" style="flex:0;padding:4px 14px;">关闭</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>💰 资金管理</h2>
+      <div class="stat-row">
+        <span class="stat-label">账户余额</span>
+        <span class="stat-value" id="cmEquity">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">可用余额</span>
+        <span class="stat-value" id="cmAvailable">--</span>
+      </div>
+      <div class="stat-row" style="border-bottom:2px solid #30363d;">
+        <span class="stat-label">部署资金</span>
+        <span class="stat-value" id="cmDeployed">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">杠杆</span>
+        <span class="stat-value" id="cmLeverage">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">每格数量</span>
+        <span class="stat-value green" id="cmAmountPerGrid">--</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">同时持仓上限</span>
+        <span class="stat-value" id="cmMaxActive">--</span>
+      </div>
+      <div class="stat-row" style="border-bottom:2px solid #30363d;">
+        <span class="stat-label">强平缓冲</span>
+        <span class="stat-value yellow" id="cmLiqBuffer">--</span>
+      </div>
+      <div id="cmWarnings" style="margin-top:6px;font-size:11px;color:#f85149;"></div>
+      <div id="cmRecs" style="font-size:11px;color:#58a6ff;"></div>
+      <div class="settings-row" style="border:none; padding-top:8px;">
+        <label style="min-width:auto;font-size:11px;">使用率 %</label>
+        <input type="number" id="cfgUsagePct" min="10" max="100" step="5" style="width:60px;font-size:11px;" value="70">
+      </div>
+      <div class="settings-row" style="border:none;">
+        <label style="min-width:auto;font-size:11px;">杠杆</label>
+        <select id="cfgLeverage" style="width:70px;font-size:11px;">
+          <option value="1">1×</option>
+          <option value="2">2×</option>
+          <option value="3" selected>3×</option>
+          <option value="5">5×</option>
+          <option value="10">10×</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: Grid visualization -->
+  <div class="grid">
+    <div class="card full">
+      <h2>网格状态 <span style="font-size:11px;color:#8b949e;">(绿=做多, 红=做空)</span></h2>
+      <div id="gridVisual" class="grid-visual">加载中...</div>
+    </div>
+  </div>
+
+  <!-- Row 4: Positions table -->
+  <div class="grid">
+    <div class="card full">
+      <h2>当前持仓</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>网格</th><th>方向</th><th>入场价</th><th>数量</th><th>当前价</th><th>浮动盈亏</th><th>时间</th></tr>
+          </thead>
+          <tbody id="positionsBody"><tr><td colspan="7" style="text-align:center;color:#8b949e;">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 4: Trade log -->
+  <div class="grid">
+    <div class="card full">
+      <h2>交易日志 <span id="tradeCount" style="font-weight:normal;font-size:11px;"></span></h2>
+      <div class="table-wrap" style="max-height:300px; overflow-y:auto;">
+        <table>
+          <thead>
+            <tr><th>时间</th><th>方向</th><th>动作</th><th>价格</th><th>网格</th><th>毛盈亏</th><th>手续费</th><th>净利润</th></tr>
+          </thead>
+          <tbody id="logBody"><tr><td colspan="8" style="text-align:center;color:#8b949e;">等待交易...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let lastPrice = null;
+let externalConfig = null;
+
+function fmt(n, d) {
+  if (n == null || n === '--') return '--';
+  d = d || (n > 1 ? 2 : 4);
+  return Number(n).toLocaleString('en-US', {minimumFractionDigits: d, maximumFractionDigits: d});
+}
+
+function toggleAutoOptimize() {
+  const btn = document.getElementById('autoOptBtn');
+  const newState = btn.textContent.trim() !== '✅ 开启';
+  fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({auto_optimize: newState}),
+  }).then(r => r.json()).then(resp => {
+    if (resp.status === 'ok') {
+      btn.textContent = newState ? '✅ 开启' : '关闭';
+      btn.style.background = newState ? '#238636' : '#21262d';
+      btn.style.borderColor = newState ? '#2ea043' : '#30363d';
+    }
+  });
+}
+
+function control(action) {
+  fetch('/api/control', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({action})
+  }).then(r => r.json()).then(() => refresh());
+}
+
+function setMode(mode) {
+  const btns = document.querySelectorAll('#modeToggle button');
+  btns.forEach(b => {
+    const isPaper = b.dataset.mode === 'paper';
+    if (b.dataset.mode === mode) {
+      b.className = 'mode-' + mode + ' active-' + mode;
+    } else {
+      b.className = 'mode-' + b.dataset.mode;
+    }
+  });
+}
+
+function saveConfig() {
+  const btn = document.getElementById('saveConfigBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 保存中...';
+  const msg = document.getElementById('saveMsg');
+
+  const data = {
+    symbol: document.getElementById('cfgSymbol').value,
+    mode: document.querySelector('#modeToggle .active-paper, #modeToggle .active-live')?.dataset?.mode || 'paper',
+    grid_count: parseInt(document.getElementById('cfgGridCount').value) || 20,
+    price_range_pct: parseFloat(document.getElementById('cfgRange').value) / 100 || 0.02,
+    amount_per_grid: parseInt(document.getElementById('cfgAmount').value) || 200,
+    check_interval: parseInt(document.getElementById('cfgInterval').value) || 3,
+    usage_pct: parseInt(document.getElementById('cfgUsagePct').value) || 70,
+    leverage: parseInt(document.getElementById('cfgLeverage').value) || 3,
+  };
+
+  fetch('/api/config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(data),
+  }).then(r => r.json()).then(resp => {
+    btn.disabled = false;
+    btn.textContent = '💾 保存并重启';
+    if (resp.error) {
+      msg.className = 'save-msg error';
+      msg.textContent = '❌ ' + resp.error;
+    } else {
+      msg.className = 'save-msg success';
+      msg.textContent = '✅ 已保存，策略已重启 (' + resp.config.symbol + ' / ' + resp.config.mode + ')';
+      setTimeout(() => { msg.textContent = ''; }, 4000);
+    }
+  }).catch(e => {
+    btn.disabled = false;
+    btn.textContent = '💾 保存并重启';
+    msg.className = 'save-msg error';
+    msg.textContent = '❌ 连接失败';
+  });
+}
+
+async function refresh() {
+  const s = await fetch('/api/status').then(r => r.json());
+  if (s.error) return;
+
+  // Price
+  const pe = document.getElementById('priceDisplay');
+  pe.textContent = s.price ? '$' + fmt(s.price, 5) : '--';
+  if (lastPrice !== null && s.price) {
+    pe.className = 'price-display ' + (s.price >= lastPrice ? 'price-up' : 'price-down');
+  }
+  lastPrice = s.price;
+
+  // Basic stats
+  document.getElementById('statSymbol').textContent = s.symbol;
+  document.getElementById('statGrids').textContent = s.grids;
+  document.getElementById('statRange').textContent = '$' + fmt(s.price_lower, 5) + ' ~ $' + fmt(s.price_upper, 5);
+  document.getElementById('statLongPos').textContent = s.long_positions || 0;
+  document.getElementById('statShortPos').textContent = s.short_positions || 0;
+  document.getElementById('statTrades').textContent = s.daily_trades;
+
+  // Long
+  document.getElementById('longPosCount').textContent = s.long_positions || 0;
+  const lpEl = document.getElementById('longPnl');
+  lpEl.textContent = (s.long_pnl >= 0 ? '+' : '') + fmt(s.long_pnl, 4) + ' USDT';
+  lpEl.className = 'stat-value ' + (s.long_pnl >= 0 ? 'green' : 'red');
+  document.getElementById('longFees').textContent = '-' + fmt(s.long_fees || 0, 4) + ' USDT';
+  const longNet = (s.long_pnl || 0) - (s.long_fees || 0);
+  const lnEl = document.getElementById('longNet');
+  lnEl.textContent = (longNet >= 0 ? '+' : '') + fmt(longNet, 4) + ' USDT';
+  lnEl.className = 'stat-value ' + (longNet >= 0 ? 'green' : 'red');
+
+  // Short
+  document.getElementById('shortPosCount').textContent = s.short_positions || 0;
+  const spEl = document.getElementById('shortPnl');
+  spEl.textContent = (s.short_pnl >= 0 ? '+' : '') + fmt(s.short_pnl, 4) + ' USDT';
+  spEl.className = 'stat-value ' + (s.short_pnl >= 0 ? 'green' : 'red');
+  document.getElementById('shortFees').textContent = '-' + fmt(s.short_fees || 0, 4) + ' USDT';
+  const shortNet = (s.short_pnl || 0) - (s.short_fees || 0);
+  const snEl = document.getElementById('shortNet');
+  snEl.textContent = (shortNet >= 0 ? '+' : '') + fmt(shortNet, 4) + ' USDT';
+  snEl.className = 'stat-value ' + (shortNet >= 0 ? 'green' : 'red');
+
+  // Market Analysis
+  try {
+    const ma = await fetch('/api/market_analysis').then(r => r.json());
+    if (ma.analysis) {
+      const a = ma.analysis;
+      document.getElementById('maVolatility').textContent = a.volatility_pct + '%';
+      const trendEmoji = a.trend === 'up' ? '📈' : a.trend === 'down' ? '📉' : '➡️';
+      const trendColor = a.trend === 'up' ? 'green' : a.trend === 'down' ? 'red' : '';
+      document.getElementById('maTrend').innerHTML = `<span class="stat-value ${trendColor}">${trendEmoji} ${a.trend === 'up' ? '上涨' : a.trend === 'down' ? '下跌' : '震荡'}</span>`;
+      document.getElementById('maAdx').textContent = a.adx + (a.adx > 25 ? ' (强)' : ' (弱)');
+      // 协调后的推荐（资金约束）
+      const cr = ma.constrained || {};
+      const cap = ma.capital || {};
+      const mg = a.optimal_grid_count;
+      const mr = a.optimal_range_pct;
+      const cg = cr.grid_count || mg;
+      const cgr = cr.range_pct || mr;
+
+      // 显示格式：市场推荐 → 资金约束 → 最终
+      const gridLabel = (cg < mg) ? `${mg}→${cg}格` : `${mg}格`;
+      const rangeLabel = (cgr < mr) ? `±${mr}→±${cgr}%` : `±${mr}%`;
+
+      document.getElementById('maRange').textContent = rangeLabel + '  |  ' + ma.current.range_pct + '%';
+      document.getElementById('maGrids').textContent = gridLabel + '  |  ' + ma.current.grid_count;
+      document.getElementById('maStep').textContent = a.optimal_step_pct + '%';
+      document.getElementById('maProfitRatio').textContent = a.step_vs_fee_ratio + '×';
+
+      // 如果资金约束生效，显示提示
+      const capRow = document.getElementById('maCapitalRow');
+      if (cg < mg && cap.equity > 0) {
+        capRow.style.display = '';
+        document.getElementById('maCapitalLimit').textContent = `$${cap.equity} 只能撑 ${cg} 格`;
+      } else {
+        capRow.style.display = 'none';
+      }
+    }
+    // Auto-optimize button
+    const aoBtn = document.getElementById('autoOptBtn');
+    if (ma.auto_optimize) {
+      aoBtn.textContent = '✅ 开启';
+      aoBtn.style.background = '#238636';
+      aoBtn.style.borderColor = '#2ea043';
+    } else {
+      aoBtn.textContent = '关闭';
+      aoBtn.style.background = '#21262d';
+      aoBtn.style.borderColor = '#30363d';
+    }
+    // Capital Analysis
+    try {
+      const ca = await fetch('/api/capital_analysis').then(r => r.json());
+      if (ca.analysis) {
+        const a = ca.analysis;
+        const fmtBalance = (v) => '$' + (v || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+        if (a.equity > 0) {
+          document.getElementById('cmEquity').textContent = fmtBalance(a.equity);
+          document.getElementById('cmAvailable').textContent = fmtBalance(a.available);
+          document.getElementById('cmDeployed').textContent = fmtBalance(a.deployed) + ' (' + a.usage_pct + '%)';
+          document.getElementById('cmLeverage').textContent = a.leverage + '×';
+          document.getElementById('cmAmountPerGrid').textContent = a.amount_per_grid;
+          document.getElementById('cmMaxActive').textContent = a.max_active_positions;
+          document.getElementById('cmLiqBuffer').textContent = a.liquidation_buffer_pct + '%';
+        } else {
+          document.getElementById('cmEquity').textContent = '🟢 模拟';
+          document.getElementById('cmAvailable').textContent = '--';
+          document.getElementById('cmDeployed').textContent = '--';
+          document.getElementById('cmLeverage').textContent = a.leverage + '×';
+          document.getElementById('cmAmountPerGrid').textContent = '200';
+          document.getElementById('cmMaxActive').textContent = a.max_active_positions;
+          document.getElementById('cmLiqBuffer').textContent = a.liquidation_buffer_pct + '%';
+        }
+        const warnEl = document.getElementById('cmWarnings');
+        const recEl = document.getElementById('cmRecs');
+        if (a.equity > 0) {
+          warnEl.innerHTML = a.warnings ? a.warnings.map(w => '⚠️ ' + w).join('<br>') : '';
+          recEl.innerHTML = a.recommendations ? a.recommendations.map(r => '💡 ' + r).join('<br>') : '';
+        } else {
+          warnEl.innerHTML = '💡 充值 USDT 后自动算每格仓位';
+          recEl.innerHTML = '';
+        }
+      }
+      // Load config into settings fields
+      const cfg = ca.current_config || {};
+      if (cfg.usage_pct) document.getElementById('cfgUsagePct').value = cfg.usage_pct;
+      if (cfg.leverage) document.getElementById('cfgLeverage').value = cfg.leverage;
+    } catch(e) {}
+  } catch(e) {}
+
+  const isLive = s.mode === 'live';
+
+  const netPnl = (s.total_pnl || 0) - (s.total_fees || 0);
+  const netEl = document.getElementById('statNetPnl');
+  if (isLive && s.okx_total_pnl !== 0) {
+    netEl.textContent = (s.okx_total_pnl >= 0 ? '+' : '') + fmt(s.okx_total_pnl, 4) + ' USDT';
+    netEl.className = 'stat-value ' + (s.okx_total_pnl >= 0 ? 'green' : 'red');
+  } else {
+    netEl.textContent = (netPnl >= 0 ? '+' : '') + fmt(netPnl, 4) + ' USDT';
+    netEl.className = 'stat-value ' + (netPnl >= 0 ? 'green' : 'red');
+  }
+
+  // OKX 真实数据（仅实盘模式显示）
+  ['longOKXRow','shortOKXRow','okxSummaryCard'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isLive ? '' : 'none';
+  });
+  if (isLive) {
+    document.getElementById('longOKXUpl').textContent = (s.okx_long_upl >= 0 ? '+' : '') + fmt(s.okx_long_upl, 4);
+    document.getElementById('shortOKXUpl').textContent = (s.okx_short_upl >= 0 ? '+' : '') + fmt(s.okx_short_upl, 4);
+    document.getElementById('okxUnrealized').textContent = (s.okx_unrealized_pnl >= 0 ? '+' : '') + fmt(s.okx_unrealized_pnl, 4) + ' USDT';
+    document.getElementById('okxRealized').textContent = (s.okx_realized_pnl >= 0 ? '+' : '') + fmt(s.okx_realized_pnl, 4) + ' USDT';
+    const okxTotal = document.getElementById('okxTotal');
+    okxTotal.textContent = (s.okx_total_pnl >= 0 ? '+' : '') + fmt(s.okx_total_pnl, 4) + ' USDT';
+    okxTotal.className = 'stat-value ' + (s.okx_total_pnl >= 0 ? 'green' : 'red');
+    // OKX 持仓信息
+    if (s.okx_long_sz > 0) {
+      document.getElementById('longPosCount').textContent = (s.okx_long_sz * 1000).toFixed(0) + ' DOGE';
+    }
+    if (s.okx_short_sz > 0) {
+      document.getElementById('shortPosCount').textContent = (s.okx_short_sz * 1000).toFixed(0) + ' DOGE';
+    }
+  }
+
+  // Mode & run
+  const mb = document.getElementById('modeBadge');
+  mb.textContent = isLive ? '🔴 实盘模式' : '🟢 模拟模式';
+  mb.className = 'badge ' + (isLive ? 'badge-live' : 'badge-paper');
+
+  const rs = document.getElementById('runStatus');
+  if (s.running) {
+    rs.innerHTML = '<span class="dot dot-green"></span>运行中';
+    document.getElementById('btnStart').style.display = 'none';
+    document.getElementById('btnStop').style.display = '';
+  } else {
+    rs.innerHTML = '<span class="dot dot-red"></span>已停止';
+    document.getElementById('btnStart').style.display = '';
+    document.getElementById('btnStop').style.display = 'none';
+  }
+
+  // Config (load once)
+  if (!externalConfig) {
+    externalConfig = await fetch('/api/config').then(r => r.json());
+    const sel = document.getElementById('cfgSymbol');
+    sel.innerHTML = externalConfig.available_symbols.map(sym =>
+      `<option value="${sym}" ${sym === externalConfig.symbol ? 'selected' : ''}>${sym}</option>`
+    ).join('');
+    // Only set mode if initial
+    setMode(externalConfig.mode);
+    document.getElementById('cfgGridCount').value = externalConfig.grid_count;
+    document.getElementById('cfgRange').value = (externalConfig.price_range_pct * 100).toFixed(1);
+    document.getElementById('cfgAmount').value = externalConfig.amount_per_grid;
+    document.getElementById('cfgInterval').value = externalConfig.check_interval;
+  }
+
+  // Grids
+  const g = await fetch('/api/grids').then(r => r.json());
+  let gv = '';
+  const halfIdx = Math.floor((g.grids?.length || 0) / 2);
+  for (let i = (g.grids?.length || 0) - 1; i >= 0; i--) {
+    const gl = g.grids[i];
+    if (!gl) continue;
+    let cls = 'empty', tag = '';
+    if (gl.has_position) {
+      cls = gl.side === 'LONG' ? 'long-open' : 'short-open';
+      tag = '<span class="tag tag-' + (gl.side === 'LONG' ? 'long' : 'short') + '">' + (gl.side === 'LONG' ? '做多' : '做空') + '</span>';
+    } else {
+      tag = i < halfIdx ? '<span style="color:#3fb950;font-size:9px;">多</span>' : '<span style="color:#f85149;font-size:9px;">空</span>';
+    }
+    const isCurrent = s.price && Math.abs(s.price - gl.price) / gl.price < 0.002;
+    const bold = isCurrent ? 'font-weight:700;color:#fff;' : '';
+    gv += `<div class="grid-line ${cls}" style="${bold}"><span class="idx">#${gl.index}</span><span class="price">$${fmt(gl.price, 5)}</span>${tag}</div>`;
+  }
+  document.getElementById('gridVisual').innerHTML = gv;
+
+  // Positions
+  const pos = await fetch('/api/positions').then(r => r.json());
+  const pb = document.getElementById('positionsBody');
+  if (!pos || pos.length === 0) {
+    pb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8b949e;">暂无持仓</td></tr>';
+  } else {
+    pb.innerHTML = pos.map(p => {
+      const curP = s.price || 0;
+      const isLong = p.side === 'LONG';
+      let flPnl, sideText, sideCls;
+      if (isLong) {
+        flPnl = (curP - p.entry_price) * p.amount;
+        sideText = '做多 ▲'; sideCls = 'trade-buy-long';
+      } else {
+        flPnl = (p.entry_price - curP) * p.amount;
+        sideText = '做空 ▼'; sideCls = 'trade-sell-short';
+      }
+      return `<tr>
+        <td>#${p.grid}</td><td class="${sideCls}">${sideText}</td>
+        <td>$${fmt(p.entry_price, 5)}</td><td>${p.amount}</td>
+        <td>$${fmt(curP, 5)}</td>
+        <td class="${flPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}">${flPnl >= 0 ? '+' : ''}${fmt(flPnl, 4)}</td>
+        <td>${p.time ? p.time.slice(11, 19) : '--'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Trade log
+  const logs = await fetch('/api/trade_log').then(r => r.json());
+  const lb = document.getElementById('logBody');
+  document.getElementById('tradeCount').textContent = '(' + (logs?.length || 0) + ' 条)';
+  if (!logs || logs.length === 0) {
+    lb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#8b949e;">暂无交易记录</td></tr>';
+  } else {
+    lb.innerHTML = logs.map(l => {
+      if (l.action === 'HOLD') {
+        return `<tr><td>${l.time}</td><td class="trade-hold">--</td><td class="trade-hold">等待</td><td>$${fmt(l.price, 5)}</td><td>--</td><td>--</td><td class="fee">--</td><td>--</td></tr>`;
+      }
+      const side = l.side || '';
+      let sideText = '', sideCls = '', actionText = '';
+      if (side === 'LONG') {
+        sideText = '▲ 做多'; sideCls = 'trade-buy-long';
+        actionText = l.action === 'BUY' ? '买入' : '卖出';
+      } else if (side === 'SHORT') {
+        sideText = '▼ 做空'; sideCls = 'trade-sell-short';
+        actionText = l.action === 'SELL_SHORT' ? '开空' : '平空';
+      } else {
+        actionText = l.action && l.action.startsWith('SELL') ? '卖出' : '买入';
+      }
+      const pnlStr = l.pnl != null ? (l.pnl >= 0 ? '+' : '') + fmt(l.pnl, 4) + ' USDT' : '--';
+      const feeStr = l.total_fee != null ? '-' + fmt(l.total_fee, 6) : (l.fee != null ? '-' + fmt(l.fee, 6) : '--');
+      const netStr = l.net_pnl != null ? (l.net_pnl >= 0 ? '+' : '') + fmt(l.net_pnl, 4) + ' USDT' : '--';
+      return `<tr>
+        <td>${l.time}</td><td class="${sideCls}">${sideText}</td><td class="${sideCls}">${actionText}</td>
+        <td>$${fmt(l.price, 5)}</td><td>${l.grid != null ? '#' + l.grid : '--'}</td>
+        <td class="${l.pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}">${pnlStr}</td>
+        <td class="fee">${feeStr}</td>
+        <td class="${l.net_pnl >= 0 ? 'pnl-positive' : 'pnl-negative'}">${netStr}</td>
+      </tr>`;
+    }).join('');
+  }
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

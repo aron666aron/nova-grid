@@ -17,9 +17,10 @@
 | 🤖 **双向网格** | 同时做多做空，牛熊双吃 |
 | 🧠 **信号过滤** | ADX/RSI/EMA/成交量 四因子智能过滤 |
 | ⚡ **自动优化** | 根据波动率自动调参 |
-| 🖥 **Web 仪表盘** | 实时看状态、盈亏、信号 |
+| 🖥 **Web 仪表盘** | 实时看状态、盈亏、信号、交易记录 |
 | 🛡 **风控系统** | 保证金管理、强平预警、网格跟随 |
-| 🚀 **一键部署** | 3 条命令上线运行 |
+| 🚀 **一键部署工具** | 内置 Web UI，填表单 → 点按钮 → 自动部署到任意服务器 |
+| 🧩 **OpenClaw/Claude Code Skill** | `.openclaw/skills/novagrid-deploy/` 即装即用 |
 
 ---
 
@@ -304,6 +305,65 @@ SYMBOLS = {
 - 建议使用不影响生活的闲置资金
 - 开发者不对使用本软件造成的任何损失负责
 - 过往表现不代表未来收益
+
+---
+
+## 🚀 One-Click Deploy Tool
+
+NovaGrid 内置了**零门槛部署工具**——不需要会 Linux，不需要输入命令行，全在网页上完成。
+
+### 架构
+
+```
+┌─ 已有 Web 服务器（端口 5000） ─────────────────┐
+│                                                  │
+│  /deploy/  → 部署表单（填 IP/密码/API 密钥）    │
+│  POST /api/deploy/start → 启动后台部署线程      │
+│  GET  /api/deploy/progress → 实时显示部署进度   │
+│                                                  │
+│  deploy_worker.py  →  SSH 连目标 → 上传文件     │
+│                     → 装依赖 → 启动 @5002       │
+└──────────────────────────────────────────────────┘
+```
+
+### 使用方式
+
+1. 运行 NovaGrid（`python web_server.py`）
+2. 浏览器打开 `http://你的服务器IP:5000/deploy/`
+3. 填写目标服务器信息 + OKX API 密钥 + 交易参数
+4. 点击「开始部署」→ 全程实时进度条
+5. 部署完成后访问 `http://目标服务器IP:5002/` 看仪表盘
+
+### 部署文件
+
+| 文件 | 说明 |
+|------|------|
+| `deploy/deploy.html` | 部署表单前端页面 |
+| `deploy/deploy_worker.py` | 后台部署引擎（SSH + paramiko） |
+| `deploy/dist/` | 完整机器人发行包（自动上传） |
+| `deploy/setup.sh` | 服务器初始化脚本 |
+
+> 部署工具自动上传整个 `dist/` 目录到目标服务器，包含网格引擎、Web 仪表盘、信号过滤器、资金管理等所有模块。
+
+---
+
+## 🧩 OpenClaw / Claude Code Skill
+
+NovaGrid Deploy 以 [AgentSkill](https://clawhub.ai) 形式提供，可被 OpenClaw 和 Claude Code 直接安装使用。
+
+### 安装
+
+```bash
+# 从 OpenClaw
+openclaw skill install novagrid-deploy
+
+# 或手动克隆 repo
+cd ~/.openclaw/skills/
+git clone https://github.com/aron666aron/nova-grid.git novagrid-deploy
+openclaw skill reload
+```
+
+技能文件位于 `.openclaw/skills/novagrid-deploy/`，包含完整的 deploy 文件和部署文档。
 
 ---
 

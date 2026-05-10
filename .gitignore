@@ -10,3 +10,5 @@ dist/
 build/
 .venv/
 venv/
+deploy/deploy_config.json
+deploy/logs/

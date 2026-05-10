@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NovaGrid 一键部署</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f0f23;color:#e0e0e0}
+.header{background:linear-gradient(135deg,#1a1a3e,#0f3460);padding:20px;text-align:center}
+.header h1{font-size:1.8rem;color:#e94560}.header p{color:#888;font-size:0.85rem}
+.container{max-width:720px;margin:20px auto;padding:0 15px}
+.card{background:#1a1a3e;border:1px solid #2a2a4a;border-radius:12px;padding:20px;margin-bottom:16px}
+.card h2{font-size:1.1rem;color:#e94560;margin-bottom:12px}
+.card h3{font-size:1rem;color:#e94560;margin:14px 0 6px}
+label{display:block;font-size:0.85rem;color:#aaa;margin:10px 0 3px}
+input,select{width:100%;padding:9px 12px;background:#0f0f23;border:1px solid #333;border-radius:8px;color:#fff;outline:none}
+input:focus,select:focus{border-color:#e94560}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.btn{display:block;padding:11px;border:none;border-radius:8px;font-size:1rem;cursor:pointer;text-align:center;width:100%}
+.btn-pink{background:#e94560;color:#fff}.btn-pink:hover{background:#d63850}
+.btn-pink:disabled{background:#555;cursor:not-allowed}
+.btn-ghost{background:transparent;border:1px solid #555;color:#aaa;padding:7px 14px;width:auto;display:inline-block;font-size:0.85rem;border-radius:6px;cursor:pointer}
+.btn-ghost:hover{border-color:#e94560;color:#e94560}
+.hint{font-size:0.75rem;color:#666;margin-top:2px}
+#log-box{background:#0a0a1a;border:1px solid #333;border-radius:8px;padding:12px;height:230px;overflow-y:auto;font-family:monospace;font-size:0.78rem;line-height:1.4;white-space:pre-wrap}
+#log-box .i{color:#4fc3f7}#log-box .s{color:#66bb6a}#log-box .e{color:#ef5350}
+#result{display:none;background:#1a3e1a;border:1px solid #2d8a4e;border-radius:12px;padding:20px;text-align:center;margin-top:12px}
+#result h2{color:#66bb6a}#result .url{font-size:1.2rem;color:#66bb6a;margin:8px 0;word-break:break-all}
+.guide{font-size:0.85rem;line-height:1.7;color:#ccc}
+.guide b{color:#e94560}.guide code{background:#0a0a1a;padding:1px 5px;border-radius:4px;font-size:0.8rem;color:#66bb6a}
+.guide .step{background:#0a0a1a;border-left:3px solid #e94560;padding:8px 12px;margin:8px 0;border-radius:0 8px 8px 0}
+</style>
+</head>
+<body>
+<div class="header"><h1>&#x26a1; NovaGrid &#x4e00;&#x952e;&#x90e8;&#x7f72;</h1><p>&#x586b;&#x5165;&#x4fe1;&#x606f; &#x2192; &#x81ea;&#x52a8;&#x90e8;&#x7f72;&#x5230;&#x4f60;&#x7684;&#x670d;&#x52a1;&#x5668;</p></div>
+<div class="container">
+
+<!-- &#x670d;&#x52a1;&#x5668;&#x6307;&#x5357; -->
+<div class="card"><h2>&#x1f4e6; &#x6ca1;&#x6709;&#x670d;&#x52a1;&#x5668;&#xff1f;&#x8d2d;&#x4e70;&#x6307;&#x5357;</h2>
+<div class="guide">
+<p><b>&#x6240;&#x9700;&#xff1a;</b>&#x4e00;&#x53f0;&#x6d77;&#x5916;/&#x9999;&#x6e2f; Linux &#x670d;&#x52a1;&#x5668;&#xff08;&#x6700;&#x4f4e; 1&#x6838;1G&#x5185;&#x5b58;&#xff0c;&#x6bcf;&#x6708; ~&#xffe5;20-40&#xff09;</p>
+
+<div class="step">
+<b>&#x63a8;&#x8350;&#x65b9;&#x6848; 1&#xff1a;RackNerd</b> &#xff08;&#x7f8e;&#x56fd;&#xff0c;&#x6700;&#x4fbf;&#x5b9c;&#xff09;<br>
+&#x6bcf;&#x5e74; $10-20&#xff08;&#x7ea6; &#xffe5;70-140&#xff09;<br>
+&#x8d2d;&#x4e70;&#x94fe;&#x63a5;: <a href="https://www.racknerd.com/BlackFriday/" target="_blank" style="color:#4fc3f7">racknerd.com</a><br>
+&#x652f;&#x6301; Alipay&#xff0c;&#x5185;&#x5730;&#x7528;&#x6237;&#x53ef;&#x76f4;&#x63a5;&#x4e0b;&#x5355;
+</div>
+
+<div class="step">
+<b>&#x63a8;&#x8350;&#x65b9;&#x6848; 2&#xff1a;&#x963f;&#x91cc;&#x4e91;&#x8f7b;&#x91cf;&#x670d;&#x52a1;&#x5668;&#xff08;&#x9999;&#x6e2f;&#xff09;</b><br>
+&#x6708;&#x4ed8; ~&#xffe5;34&#xff08;2&#x6838;1G&#xff09;<br>&#x521d;&#x6b21;&#x8d2d;&#x4e70;&#x9009; <code>&#x9999;&#x6e2f;&#x5730;&#x57df;</code><br>
+&#x914d;&#x7f6e;&#x65f6;&#x8bb0;&#x5f97;&#x5728; <b>&#x5b89;&#x5168;&#x7ec4;</b> &#x4e2d;&#x6253;&#x5f00;&#x7aef;&#x53e3; <code>5000</code> &#x548c; <code>22</code>
+</div>
+
+<div class="step">
+<b>&#x63a8;&#x8350;&#x65b9;&#x6848; 3&#xff1a;Vultr</b> &#xff08;&#x65e5;&#x672c;/&#x65b0;&#x52a0;&#x5761;&#xff0c;&#x901f;&#x5ea6;&#x5f88;&#x5feb;&#xff09;<br>
+&#x6309;&#x5c0f;&#x65f6;&#x8ba1;&#x8d39; $0.007/h&#xff0c;&#x7528;&#x591a;&#x5c11;&#x7ed9;&#x591a;&#x5c11;<br>
+&#x652f;&#x6301; Alipay&#xff0c;&#x65e0;&#x9700;&#x4fe1;&#x7528;&#x5361;<br>
+<a href="https://www.vultr.com/" target="_blank" style="color:#4fc3f7">vultr.com</a>
+</div>
+
+<p style="margin-top:10px"><b>&#x2780;</b> &#x8d2d;&#x4e70;&#x540e;&#xff0c;&#x7cfb;&#x7edf;&#x4f1a;&#x7ed9;&#x4f60; <code>IP&#x5730;&#x5740;</code> &#x548c; <code>root&#x5bc6;&#x7801;</code><br>
+<b>&#x2781;</b> &#x767b;&#x5f55;&#x5230;&#x670d;&#x52a1;&#x5668;&#x5546;&#x7684;&#x63a7;&#x5236;&#x9762;&#x677f;&#xff0c;&#x5728;<b>&#x5b89;&#x5168;&#x7ec4;/&#x9632;&#x706b;&#x5899;</b>&#x4e2d;&#x6253;&#x5f00;&#x7aef;&#x53e3; <code>5000</code> &#xff08;&#x4e0d;&#x7136;&#x65e0;&#x6cd5;&#x8bbf;&#x95ee;Web&#x9762;&#x677f;&#xff09;</p>
+</div></div>
+
+<!-- &#x90e8;&#x7f72;&#x8868;&#x5355; -->
+<div class="card"><h2>&#x1f310; &#x76ee;&#x6807;&#x670d;&#x52a1;&#x5668;</h2>
+<input id="ip" placeholder="&#x4f60;&#x7684;&#x670d;&#x52a1;&#x5668; IP"><div class="hint">&#x5c06;&#x628a; NovaGrid &#x90e8;&#x7f72;&#x5230;&#x8fd9;&#x53f0;&#x670d;&#x52a1;&#x5668;</div>
+<div class="row"><div><label>SSH &#x7aef;&#x53e3;</label><input id="port" value="22"></div><div><label>&#x7528;&#x6237;&#x540d;</label><input id="user" value="root"></div></div>
+<label>&#x5bc6;&#x7801;</label><input id="pass" type="password" placeholder="root SSH &#x5bc6;&#x7801;">
+<button class="btn-ghost" style="margin-top:10px" onclick="testConn()">&#x1f50c; &#x6d4b;&#x8bd5;&#x8fde;&#x63a5;</button>
+<span id="test-r" style="margin-left:8px;font-size:0.85rem;color:#888"></span>
+<div class="hint" style="margin-top:6px">&#x5efa;&#x8bae;&#x5148;&#x70b9;&#x6d4b;&#x8bd5;&#xff0c;&#x786e;&#x8ba4;&#x53ef;&#x4ee5;SSH&#x8fde;&#x63a5;&#x540e;&#x518d;&#x7ee7;&#x7eed;</div>
+</div>
+
+<div class="card"><h2>&#x1f511; OKX API &#x5bc6;&#x94a5;</h2>
+<label>API Key</label><input id="okx-key" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+<label>Secret Key</label><input id="okx-secret" placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+<label>Passphrase</label><input id="okx-pass" placeholder="&#x521b;&#x5efa; API &#x65f6;&#x586b;&#x7684;&#x77ed;&#x8bed;">
+<div class="hint">&#x5728; OKX &#x7f51;&#x7ad9; <code>&#x9996;&#x9875; &gt; API</code> &#x521b;&#x5efa;&#xff0c;&#x9700;&#x6743;&#x9650;: &#x4ea4;&#x6613; + &#x8bfb;&#x53d6;</div>
+<div class="row"><div><label>&#x4ea4;&#x6613;&#x5bf9;</label><select id="sym"><option>DOGE-USDT</option><option>BTC-USDT</option><option>ETH-USDT</option><option>SOL-USDT</option></select></div><div><label>&#x6a21;&#x5f0f;</label><select id="mode"><option value="paper">&#x6a21;&#x62df;(&#x5148;&#x6d4b;&#x8bd5;)</option><option value="live">&#x5b9e;&#x76d8;</option></select></div></div>
+<div class="hint"><b>&#x5efa;&#x8bae;&#xff1a;</b>&#x7b2c;&#x4e00;&#x6b21;&#x5148;&#x7528; <code>&#x6a21;&#x62df;</code> &#x6a21;&#x5f0f;&#x6d4b;&#x8bd5;! API &#x53ea;&#x67e5;&#x8be2;&#x884c;&#x60c5;&#xff0c;&#x4e0d;&#x4f1a;&#x771f;&#x5b9e;&#x4ea4;&#x6613;</div>
+</div>
+
+<div class="card"><h2>&#x2699;&#xfe0f; &#x4ea4;&#x6613;&#x53c2;&#x6570;</h2>
+<div class="row"><div><label>&#x7f51;&#x683c;&#x6570;</label><select id="grids"><option value="8">8&#xff08;&#x7c97;&#x7ea7;&#xff09;</option><option value="12" selected>12&#xff08;&#x63a8;&#x8350;&#xff09;</option><option value="16">16&#xff08;&#x7cbe;&#x7ec6;&#xff09;</option><option value="20">20&#xff08;&#x6781;&#x7ec6;&#xff09;</option></select></div><div><label>&#x4ef7;&#x683c;&#x8303;&#x56f4;</label><select id="range"><option value="1.5">&plusmn;1.5% &#xff08;&#x7d27;&#x5bc6;&#xff09;</option><option value="2" selected>&plusmn;2% &#xff08;&#x63a8;&#x8350;&#xff09;</option><option value="2.5">&plusmn;2.5% &#xff08;&#x5bbd;&#x677e;&#xff09;</option></select></div></div>
+<div class="row"><div><label>&#x6760;&#x6746;</label><select id="lev"><option value="3">3x</option><option value="5">5x</option><option value="10">10x</option></select></div><div><label>&#x56fd;&#x5185;&#x955c;&#x50cf;</label><select id="mirror"><option value="1">&#x2705; &#x5f00;&#x542f;</option><option value="0">&#x5173;&#x95ed;</option></select></div></div>
+<div class="hint">&#x56fd;&#x5185;&#x955c;&#x50cf;=&#x5f00;&#x542f; &#x2192; pip &#x4f7f;&#x7528;&#x6e05;&#x534e;&#x5927;&#x5b66;&#x955c;&#x50cf;&#xff0c;&#x52a0;&#x901f;&#x5b89;&#x88c5;</div>
+<button class="btn btn-pink" style="margin-top:12px" onclick="startDeploy()" id="deploy-btn">&#x1f680; &#x4e00;&#x952e;&#x90e8;&#x7f72;&#x5230;&#x670d;&#x52a1;&#x5668;</button>
+</div>
+
+<div id="log-panel" style="display:none">
+<div class="card"><h2>&#x1f4cb; &#x90e8;&#x7f72;&#x65e5;&#x5fd7;</h2><div id="log-box"></div></div>
+<div id="result"><h2>&#x2705; &#x90e8;&#x7f72;&#x6210;&#x529f;&#xff01;</h2>
+<p style="color:#aaa;margin:6px 0">&#x6253;&#x5f00;&#x4ee5;&#x4e0b;&#x5730;&#x5740;&#x67e5;&#x770b;&#x4eea;&#x8868;&#x76d8;</p>
+<div class="url" id="result-url"></div>
+<p style="color:#666;font-size:0.8rem;margin-top:8px">&#x2705; &#x5982;&#x679c;&#x6253;&#x4e0d;&#x5f00;&#xff0c;&#x786e;&#x8ba4;&#x670d;&#x52a1;&#x5668;&#x7684;&#x5b89;&#x5168;&#x7ec4;&#x662f;&#x5426;&#x5df2;&#x6253;&#x5f00;&#x7aef;&#x53e3; <code>5000</code></p>
+</div>
+</div>
+
+<!-- FAQ -->
+<div class="card"><h2>&#x2753; &#x5e38;&#x89c1;&#x95ee;&#x9898;</h2>
+<div class="guide">
+<p><b>Q: &#x4e00;&#x5207;&#x90fd;&#x5b89;&#x88c5;&#x597d;&#x4e86;&#xff0c;&#x6253;&#x4e0d;&#x5f00;&#x7f51;&#x9875;&#x600e;&#x4e48;&#x529e;&#xff1f;</b><br>A: &#x767b;&#x5f55;&#x670d;&#x52a1;&#x5668;&#x5546;&#x63a7;&#x5236;&#x9762;&#x677f;&#xff0c;&#x627e; <code>&#x5b89;&#x5168;&#x7ec4;/&#x9632;&#x706b;&#x5899; Firewall</code>&#xff0c;&#x6dfb;&#x52a0;&#x89c4;&#x5219;&#xff1a;&#x653e;&#x884c;&#x7aef;&#x53e3; <code>5000</code>&#xff08;&#x6765;&#x6e90; 0.0.0.0/0&#xff09;</p>
+<p><b>Q: &#x6d4b;&#x8bd5;&#x8fde;&#x63a5;&#x8d85;&#x65f6;&#xff0c;&#x600e;&#x4e48;&#x529e;&#xff1f;</b><br>A: &#x68c0;&#x67e5;&#xff1a;&#x2460; IP&#x5730;&#x5740;&#x662f;&#x5426;&#x6b63;&#x786e; &#x2461; SSH&#x7aef;&#x53e3;&#x662f;&#x5426;&#x5f00;&#x542f; &#x2462; &#x5bc6;&#x7801;&#x662f;&#x5426;&#x6b63;&#x786e; &#x2463; &#x670d;&#x52a1;&#x5668;&#x662f;&#x5426;&#x5df2;&#x5f00;&#x673a;<br>&#x5982;&#x679c;&#x786e;&#x5b9a;&#x90fd;&#x5bf9;&#xff0c;&#x8bf7;&#x786e;&#x8ba4; <code>root</code> &#x8d26;&#x53f7;&#x5df2;&#x542f;&#x7528;&#x5bc6;&#x7801;&#x767b;&#x5f55;&#xff08;<code>PasswordAuthentication yes</code>&#xff09;</p>
+<p><b>Q: &#x53ef;&#x4ee5;&#x7528;&#x56fd;&#x5185;&#x670d;&#x52a1;&#x5668;&#x5417;&#xff1f;</b><br>A: &#x4e0d;&#x884c;&#x3002;OKX API &#x88ab;&#x56fd;&#x5185;&#x7f51;&#x7edc;&#x5c4f;&#x853d;&#xff0c;&#x670d;&#x52a1;&#x5668;&#x5fc5;&#x987b;&#x5728;&#x56fd;&#x5916;&#x6216;&#x9999;&#x6e2f;</p>
+<p><b>Q: &#x4f1a;&#x4e0d;&#x4f1a;&#x4e22;&#x94b1;&#xff1f;</b><br>A: &#x6a21;&#x62df;&#x6a21;&#x5f0f;&#x4e0d;&#x4f1a;&#x4e22;&#x94b1;&#x3002;&#x5b9e;&#x76d8;&#x6a21;&#x5f0f;&#x770b;&#x7f51;&#x683c;&#x7b56;&#x7565;&#x8868;&#x73b0;&#xff0c;&#x5efa;&#x8bae;&#x5c0f;&#x989d;&#x6d4b;&#x8bd5;&#x3002;&#x6709;&#x4fe1;&#x53f7;&#x8fc7;&#x6ee4;&#x5668;&#x4fdd;&#x62a4;&#x3002;</p>
+</div></div>
+
+</div>
+
+<script>
+function $(id){return document.getElementById(id)}
+function log(t,c){var b=$("log-box");b.innerHTML+='<div class="'+c+'">'+t+'</div>';b.scrollTop=b.scrollHeight}
+function testConn(){
+ var r=$("test-r");r.innerHTML='<span style=\"display:inline-block;width:10px;height:10px;border-radius:50%;background:orange;margin-right:4px\"></span> 正在测试...';
+ var d={ip:$("ip").value,port:parseInt($("port").value),user:$("user").value,pass:$("pass").value};
+ var ctrl=new AbortController();
+ setTimeout(function(){ctrl.abort()},15000);
+ fetch("/api/deploy/test",{method:"POST",body:JSON.stringify(d),headers:{"Content-Type":"application/json"},signal:ctrl.signal})
+ .then(function(x){return x.json()})
+ .then(function(d){
+  if(d.ok){r.innerHTML="&#x2705; "+d.server_type;r.style.color="#66bb6a"}
+  else{r.innerHTML="&#x274c; "+d.error;r.style.color="#ef5350"}
+ })
+ .catch(function(e){
+  if(e.name==='AbortError'){r.innerHTML="&#x274c; 超时 - 请检查 IP 和 SSH 端口是否正确，服务器是否开机"}
+  else{r.innerHTML="&#x274c; "+e.message}
+  r.style.color="#ef5350"
+ })
+}
+function startDeploy(){
+ var c={server:{ip:$("ip").value,port:parseInt($("port").value),user:$("user").value,pass:$("pass").value},okx:{key:$("okx-key").value,secret:$("okx-secret").value,passphrase:$("okx-pass").value,symbol:$("sym").value},trading:{mode:$("mode").value,grids:parseInt($("grids").value),range:parseFloat($("range").value),leverage:parseInt($("lev").value),mirror:$("mirror").value==="1"}};
+ if(!c.server.ip||!c.okx.key||!c.okx.secret||!c.okx.passphrase){alert("请填写完整信息");return}
+ $("deploy-btn").disabled=true;$("deploy-btn").innerHTML='<span class="spinner"></span> 部署中...';
+ $("log-panel").style.display="block";log("开始部署...","i");
+ fetch("/api/deploy/start",{method:"POST",body:JSON.stringify(c),headers:{"Content-Type":"application/json"}})
+ .then(function(r){return r.json()})
+ .then(function(d){
+  if(d.status==="started"){
+   var es=new EventSource("/api/deploy/progress");
+   es.onmessage=function(e){
+    var m=JSON.parse(e.data);log(m.t,m.c);
+    if(m.url){$("result-url").textContent=m.url;$("result").style.display="block";es.close();$("deploy-btn").disabled=false;$("deploy-btn").innerHTML="部署完成"}
+   };
+   es.onerror=function(){$("deploy-btn").disabled=false;$("deploy-btn").innerHTML="一键部署到服务器"}
+  }else{log("启动失败: "+d.message||d.status,"e")}
+ })
+ .catch(function(e){log("连接失败: "+e.message,"e");$("deploy-btn").disabled=false;$("deploy-btn").innerHTML="一键部署到服务器"})
+}
+</script>
+</body>
+</html>

@@ -247,52 +247,43 @@
       <div class="stat-row"><span class="stat-label">已实现 PnL</span><span class="stat-value" id="okxRealized">--</span></div>
       <div class="stat-row"><span class="stat-label" style="font-weight:700;">OKX 总盈亏</span><span class="stat-value" id="okxTotal" style="font-weight:700;">--</span></div>
     </div>
-    <!-- 参数调优说明 -->
-    <div class="card" id="optLogicCard">
-      <h2>🧠 自动调优原理</h2>
-      <div class="stat-row" style="flex-wrap:wrap;gap:4px;margin-bottom:6px;">
-        <span style="color:#8b949e;font-size:12px;line-height:1.6;">
-        <b style="color:#58a6ff;">📐 网格数 (grid_count)</b><br>
-        根据 ADX（趋势强度）动态调整：<br>
-        • 强趋势 (ADX>30) → 减少网格 → 每格吃更大波动<br>
-        • 震荡市 (ADX<20) → 增加网格 → 捕获更多微波动<br>
-        • 同时受资金约束：小资金 → 少网格<br>
-        <span style="color:#8b949e;">✅ 强趋势少发单减少磨损 | ❌ 网格少资金利用率低</span><br><br>
-
-        <b style="color:#58a6ff;">📏 网格范围 (price_range_pct)</b><br>
-        根据 ATR（平均真实波幅）自动缩放：<br>
-        • 波动大 → 扩大范围 → 防止价格出界<br>
-        • 波动小 → 缩小范围 → 网格间距更细<br>
-        <span style="color:#8b949e;">✅ 自适应行情 | ❌ 范围变宽单格利润降低</span><br><br>
-
-        <b style="color:#58a6ff;">💰 每格数量 (amount_per_grid)</b><br>
-        根据 OKX 账户余额 × 杠杆 × 使用率计算：<br>
-        • 公式：余额 × 杠杆 × 70% ÷ (网格数 × 2)<br>
-        • 例如 $14.36 × 3× ÷ 0.7 ÷ 12格 = 每格 ≈30 DOGE<br>
-        <span style="color:#8b949e;">✅ 永不爆仓 | ❌ 小资金每格利润微薄</span><br><br>
-
-        <b style="color:#58a6ff;">📊 信号过滤 (Signal Filter)</b><br>
-        多因子综合判断：RSI + EMA 趋势 + ADX + 成交量<br>
-        • 偏多信号 → 优先做空（高位接回）<br>
-        • 偏空信号 → 优先做多（低吸高抛）<br>
-        • 信号置信度低 → 双向正常交易<br>
-        <span style="color:#8b949e;">✅ 顺势增强 | ❌ 信号滞后可能错过机会</span><br><br>
-
-        <b style="color:#58a6ff;">🛡️ 资金约束 (Capital Manager)</b><br>
-        • 限制最大活跃持仓数（防止保证金不足）<br>
-        • 清算缓冲保护（距强平 >30%）<br>
-        • 实盘自动限制，模拟模式跳过<br>
-        <span style="color:#8b949e;">✅ 零爆仓风险 | ❌ 保守策略利润低</span>
-        </span>
-      </div>
-      <div class="stat-row" style="border-top:1px solid #30363d;padding-top:8px;margin-top:4px;">
-        <span style="color:#8b949e;font-size:11px;">⏱ 优化周期：每 30 分钟自动重新分析一次</span>
-      </div>
-    </div>
   </div>
 
   <!-- Row 2: Settings + Market Analysis + Capital -->
   <div class="grid">
+    <div class="card">
+      <h2>📈 盈利分析 <span id="profitStatus" style="font-size:11px;font-weight:400;"></span></h2>
+      <div id="profitBody">
+        <div class="stat-row"><span class="stat-label">交易总数</span><span class="stat-value" id="paTotalTrades">--</span></div>
+        <div class="stat-row">
+          <span class="stat-label">胜率</span>
+          <div style="flex:1;display:flex;align-items:center;gap:6px;">
+            <div style="flex:1;height:6px;background:#21262d;border-radius:3px;overflow:hidden;">
+              <div id="paWinRateBar" style="height:100%;background:#3fb950;border-radius:3px;width:0%;transition:width 0.5s;"></div>
+            </div>
+            <span class="stat-value" id="paWinRate" style="min-width:45px;">--</span>
+          </div>
+        </div>
+        <div class="stat-row"><span class="stat-label">连续亏损</span><span class="stat-value red" id="paConsecutiveLosses">--</span></div>
+        <div class="stat-row"><span class="stat-label">平均毛利润/笔</span><span class="stat-value" id="paAvgGross">--</span></div>
+        <div class="stat-row"><span class="stat-label" style="font-weight:700;">平均净利润/笔</span><span class="stat-value" id="paAvgNet" style="font-weight:700;">--</span></div>
+        <div class="stat-row" style="border-bottom:2px solid #30363d;">
+          <span class="stat-label">手续费/毛利</span>
+          <span class="stat-value yellow" id="paFeeRatio">--</span>
+        </div>
+        <div class="stat-row"><span class="stat-label">总手续费</span><span class="stat-value yellow" id="paTotalFees">-- USDT</span></div>
+        <div class="stat-row"><span class="stat-label" style="font-weight:700;">总净利润</span><span class="stat-value" id="paTotalNet" style="font-weight:700;">-- USDT</span></div>
+        <div class="stat-row" style="border-bottom:2px solid #30363d;">
+          <span class="stat-label">近期交易</span>
+          <span class="stat-value" id="paRecentTrades">--</span>
+        </div>
+        <div id="profitSuggestions" style="margin-top:8px;font-size:12px;color:#58a6ff;"></div>
+        <div id="profitHistory" style="margin-top:6px;font-size:11px;color:#8b949e;max-height:80px;overflow-y:auto;"></div>
+      </div>
+      <div id="profitEmpty" style="padding:12px 0;text-align:center;color:#8b949e;font-size:13px;">
+        暂无交易数据，开始交易后将自动分析
+      </div>
+    </div>
     <div class="card">
       <h2>⚙️ 策略设置</h2>
       <div class="settings-row">
@@ -821,10 +812,78 @@ async function refresh() {
       </tr>`;
     }).join('');
   }
+
+  // Profit Analysis
+  try {
+    const pa = await fetch('/api/profit_analysis').then(r => r.json());
+    const hasData = pa.total_trades > 0;
+    document.getElementById('profitBody').style.display = hasData ? '' : 'none';
+    document.getElementById('profitEmpty').style.display = hasData ? 'none' : '';
+
+    if (hasData) {
+      document.getElementById('paTotalTrades').textContent = pa.total_trades;
+      document.getElementById('paWinRate').textContent = pa.win_rate + '%';
+      document.getElementById('paWinRate').className = 'stat-value ' + (pa.win_rate >= 50 ? 'green' : (pa.win_rate >= 35 ? 'yellow' : 'red'));
+      document.getElementById('paWinRateBar').style.width = pa.win_rate + '%';
+      document.getElementById('paWinRateBar').style.background = pa.win_rate >= 50 ? '#3fb950' : (pa.win_rate >= 35 ? '#d29922' : '#f85149');
+      document.getElementById('paConsecutiveLosses').textContent = pa.consecutive_losses;
+      document.getElementById('paConsecutiveLosses').className = 'stat-value ' + (pa.consecutive_losses > 3 ? 'red' : (pa.consecutive_losses > 0 ? 'yellow' : ''));
+      document.getElementById('paAvgGross').textContent = '$' + fmt(pa.avg_gross_profit, 6);
+      document.getElementById('paAvgGross').className = 'stat-value ' + (pa.avg_gross_profit >= 0 ? 'green' : 'red');
+      document.getElementById('paAvgNet').textContent = '$' + fmt(pa.avg_net_profit, 6);
+      document.getElementById('paAvgNet').className = 'stat-value ' + (pa.avg_net_profit >= 0 ? 'green' : 'red');
+      document.getElementById('paFeeRatio').textContent = (pa.fee_to_profit_ratio * 100).toFixed(1) + '%';
+      document.getElementById('paFeeRatio').className = 'stat-value ' + (pa.fee_to_profit_ratio > 0.4 ? 'red' : (pa.fee_to_profit_ratio > 0.25 ? 'yellow' : ''));
+      document.getElementById('paTotalFees').textContent = '-' + fmt(pa.total_fees_paid, 4) + ' USDT';
+      document.getElementById('paTotalNet').textContent = (pa.total_net_profit >= 0 ? '+' : '') + fmt(pa.total_net_profit, 4) + ' USDT';
+      document.getElementById('paTotalNet').className = 'stat-value ' + (pa.total_net_profit >= 0 ? 'green' : 'red');
+      document.getElementById('paRecentTrades').textContent = pa.recent_trades.count + ' (胜: ' + pa.recent_trades.wins + ' 负: ' + pa.recent_trades.losses + ')';
+
+      // Status label
+      const statusLabels = {
+        'collecting': '🔄 数据采集中',
+        'profitable': '✅ 盈利中',
+        'fee_heavy': '⚠️ 手续费偏高',
+        'underperforming': '❌ 表现欠佳',
+        'stable': '✅ 稳定',
+      };
+      document.getElementById('profitStatus').textContent = statusLabels[pa.status] || '';
+
+      // Recent suggestions
+      const suggestionsEl = document.getElementById('profitSuggestions');
+      if (pa.param_change_history && pa.param_change_history.length > 0) {
+        const last = pa.param_change_history[pa.param_change_history.length - 1];
+        if (last.params && Object.keys(last.params).length > 0) {
+          const paramStr = Object.entries(last.params).map(([k, v]) => {
+            const names = {'price_range_pct': '范围', 'grid_count': '网格', 'amount_per_grid': '每格'};
+            return (names[k] || k) + '=' + (k === 'price_range_pct' ? (v*100).toFixed(1) + '%' : v);
+          }).join(', ');
+          suggestionsEl.innerHTML = '🤖 上次优化: ' + last.reasons.join('<br>🤖 ') + '<br><span style="color:#8b949e;">→ ' + paramStr + '</span>';
+        } else {
+          suggestionsEl.innerHTML = '';
+        }
+        // History log (last 5)
+        const historyEl = document.getElementById('profitHistory');
+        historyEl.innerHTML = pa.param_change_history.slice(-5).reverse().map(c => {
+          const t = c.time ? c.time.slice(11, 19) : '--';
+          const attrs = Object.entries(c.params || {}).map(([k, v]) => {
+            const names = {'price_range_pct': '范围', 'grid_count': '网格', 'amount_per_grid': '每格'};
+            return (names[k] || k) + '=' + (k === 'price_range_pct' ? (v*100).toFixed(1) + '%' : v);
+          }).join(' ');
+          return '<div>' + t + ' ' + c.reasons.join('; ') + ' → ' + attrs + '</div>';
+        }).join('') || '';
+      } else {
+        suggestionsEl.innerHTML = '';
+        document.getElementById('profitHistory').innerHTML = '';
+      }
+    }
+  } catch(e) {
+    console.error('profit analysis error', e);
+  }
 }
 
 refresh();
-setInterval(refresh, 3000);
+setInterval(refresh, 3000);}
 </script>
 </body>
 </html>

@@ -420,7 +420,35 @@
     </div>
   </div>
 
-  <!-- Row 4: Positions table -->
+  <!-- Row 4: 账户信息 + 成交历史 -->
+  <div class="grid">
+    <div class="card">
+      <h2>🏦 OKX 账户</h2>
+      <div class="stat-row"><span class="stat-label">总权益</span><span class="stat-value" id="acctEquity">--</span></div>
+      <div class="stat-row"><span class="stat-label">可用余额</span><span class="stat-value" id="acctAvailable">--</span></div>
+      <div class="stat-row"><span class="stat-label">冻结</span><span class="stat-value yellow" id="acctFrozen">--</span></div>
+      <div class="stat-row"><span class="stat-label">UPL</span><span class="stat-value" id="acctUpl">--</span></div>
+      <div class="stat-row" style="border-bottom:2px solid #30363d;">
+        <span class="stat-label">持仓数</span><span class="stat-value" id="acctPositions">--</span>
+      </div>
+      <div class="stat-row"><span class="stat-label" style="font-weight:700;">今日手续费</span><span class="stat-value yellow" id="acctFees" style="font-weight:700;">--</span></div>
+      <div class="stat-row"><span class="stat-label" style="font-weight:700;">今日净盈亏</span><span class="stat-value" id="acctNetPnl" style="font-weight:700;">--</span></div>
+      <div id="pendingOrdersList" style="margin-top:8px;font-size:11px;color:#8b949e;"></div>
+    </div>
+    <div class="card wide">
+      <h2>今日真实成交 <span id="tradeRealCount" style="font-weight:normal;font-size:11px;"></span></h2>
+      <div class="table-wrap" style="max-height:300px; overflow-y:auto;">
+        <table>
+          <thead>
+            <tr><th>时间</th><th>方向</th><th>价格</th><th>数量</th><th>手续费</th></tr>
+          </thead>
+          <tbody id="realTradeBody"><tr><td colspan="5" style="text-align:center;color:#8b949e;">加载中...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 5: Positions table -->
   <div class="grid">
     <div class="card full">
       <h2>当前持仓</h2>
@@ -880,10 +908,62 @@ async function refresh() {
   } catch(e) {
     console.error('profit analysis error', e);
   }
+
+  // Account Summary (real OKX data)
+  try {
+    const acct = await fetch('/api/account_summary').then(r => r.json());
+    if (acct.ok && acct.account) {
+      document.getElementById('acctEquity').textContent = '$' + fmt(acct.account.equity, 2);
+      document.getElementById('acctAvailable').textContent = '$' + fmt(acct.account.available, 2);
+      document.getElementById('acctFrozen').textContent = '$' + fmt(acct.account.frozen, 2);
+      document.getElementById('acctUpl').textContent = (acct.account.unrealized_pnl >= 0 ? '+' : '') + '$' + fmt(acct.account.unrealized_pnl, 4);
+      document.getElementById('acctPositions').textContent = (acct.positions || []).length;
+      document.getElementById('acctFees').textContent = '-' + fmt(acct.today.fees, 4) + ' USDT';
+      const netPnlEl = document.getElementById('acctNetPnl');
+      netPnlEl.textContent = (acct.today.net_pnl >= 0 ? '+' : '') + fmt(acct.today.net_pnl, 4) + ' USDT';
+      netPnlEl.className = 'stat-value ' + (acct.today.net_pnl >= 0 ? 'green' : 'red');
+      // Pending orders
+      if (acct.pending_orders && acct.pending_orders.length > 0) {
+        document.getElementById('pendingOrdersList').innerHTML = '⏳ 待成交订单:<br>' +
+          acct.pending_orders.map(o => {
+            const sideStr = o.posSide === 'long' ? '做多' : '做空';
+            const cls = o.posSide === 'long' ? '#3fb950' : '#f85149';
+            return '<span style="color:' + cls + '">' + sideStr + '</span> @$' + fmt(parseFloat(o.px), 5) + ' x' + (parseFloat(o.sz)*1000).toFixed(0);
+          }).join('<br>');
+      } else {
+        document.getElementById('pendingOrdersList').innerHTML = '';
+      }
+    }
+  } catch(e) {}
+
+  // Real trade history
+  try {
+    const th = await fetch('/api/trade_history').then(r => r.json());
+    if (th.ok && th.trades) {
+      document.getElementById('tradeRealCount').textContent = '(' + th.count + ' 笔, 费$' + fmt(th.fees, 4) + ', 净$' + fmt(th.net_pnl, 4) + ')';
+      const tbody = document.getElementById('realTradeBody');
+      if (th.trades.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8b949e;">暂无成交</td></tr>';
+      } else {
+        tbody.innerHTML = th.trades.slice(0, 50).map(t => {
+          const sideText = t.side === 'buy' ? '买入 ▲' : '卖出 ▼';
+          const sideCls = t.side === 'buy' ? 'trade-buy-long' : 'trade-sell-short';
+          const posStr = t.posSide === 'long' ? 'L' : 'S';
+          return '<tr>' +
+            '<td>' + t.time + '</td>' +
+            '<td class="' + sideCls + '">' + sideText + ' / ' + posStr + '</td>' +
+            '<td>$' + fmt(t.fillPx, 5) + '</td>' +
+            '<td>' + fmt(t.fillSz*1000, 0) + '</td>' +
+            '<td class="fee">-' + fmt(t.fee, 6) + '</td>' +
+            '</tr>';
+        }).join('');
+      }
+    }
+  } catch(e) {}
 }
 
 refresh();
-setInterval(refresh, 3000);}
+setInterval(refresh, 3000);
 </script>
 </body>
 </html>

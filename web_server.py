@@ -12,6 +12,7 @@ from strategies.grid_bot import GridBot
 from strategies.market_analyzer import MarketAnalyzer
 from strategies.signal_filter import get_signal as _get_signal
 from strategies.profit_optimizer import ProfitOptimizer
+from strategies.data_sync import start_sync, get_sync_data
 from capital_manager import CapitalManager, DEFAULT_USAGE_PCT, DEFAULT_LEVERAGE
 
 app = Flask(__name__)
@@ -28,6 +29,10 @@ capital_manager = CapitalManager()
 profit_optimizer = ProfitOptimizer()
 
 # ─── 全局 bot 实例管理 ─────────────────────────
+
+# 启动 OKX 数据同步（每 30 秒）
+start_sync(interval=30)
+
 bot = None
 bot_running = False
 bot_thread = None
@@ -41,6 +46,7 @@ runtime_config = {
     "price_range_pct": GRID.get("price_range_pct", 0.02),
     "amount_per_grid": GRID.get("amount_per_grid", 200),
     "check_interval": GRID.get("check_interval", 3),
+    "take_profit_grids": GRID.get("take_profit_grids", 2),
     "auto_optimize": False,
     "usage_pct": DEFAULT_USAGE_PCT * 100,
     "leverage": DEFAULT_LEVERAGE,
@@ -63,6 +69,7 @@ def _init_bot(force_new=False):
         bot.price_range_pct = rc["price_range_pct"]
         bot.amount_per_grid = rc["amount_per_grid"]
         bot.check_interval = rc["check_interval"]
+        bot.take_profit_grids = rc["take_profit_grids"]
     return bot
 
 
@@ -167,10 +174,10 @@ def api_set_config():
         return jsonify({'error': 'no data'}), 400
 
     changed = False
-    for key in ('symbol', 'mode', 'grid_count', 'price_range_pct', 'amount_per_grid', 'check_interval', 'auto_optimize', 'usage_pct', 'leverage'):
+    for key in ('symbol', 'mode', 'grid_count', 'price_range_pct', 'amount_per_grid', 'check_interval', 'take_profit_grids', 'auto_optimize', 'usage_pct', 'leverage'):
         if key in data:
             val = data[key]
-            if key == 'grid_count' or key == 'amount_per_grid' or key == 'check_interval':
+            if key == 'grid_count' or key == 'amount_per_grid' or key == 'check_interval' or key == 'take_profit_grids':
                 val = int(val)
             elif key == 'price_range_pct':
                 val = float(val)
@@ -387,6 +394,83 @@ def api_balance():
         return jsonify({'error': str(e)})
 
 
+@app.route('/api/trade_history')
+def api_trade_history():
+    """OKX 今日真实成交历史"""
+    sync = get_sync_data()
+    if not sync:
+        return jsonify({'ok': False, 'trades': [], 'msg': '数据同步尚未完成'})
+    return jsonify({
+        'ok': True,
+        'count': sync['today']['trade_count'],
+        'trades': sync['today']['trades'],
+        'pnl': sync['today']['pnl'],
+        'fees': sync['today']['fees'],
+        'net_pnl': sync['today']['net_pnl'],
+    })
+
+
+@app.route('/api/account_summary')
+def api_account_summary():
+    """OKX 账户汇总 + 权益趋势"""
+    sync = get_sync_data()
+    if not sync:
+        return jsonify({'ok': False, 'msg': '数据同步尚未完成'})
+    return jsonify({
+        'ok': True,
+        'account': sync['account'],
+        'positions': sync['positions'],
+        'pending_orders': sync['pending_orders'],
+        'today': sync['today'],
+        'equity_history': sync['equity_history'],
+        'timestamp': sync['timestamp'],
+    })
+
+
+@app.route('/deploy', methods=['GET'], strict_slashes=False)
+def serve_deploy():
+    """NovaGrid 一键部署页面"""
+    return render_template('deploy.html')
+
+@app.route('/api/deploy/test', methods=['POST'])
+def deploy_test():
+    """测试 SSH 连接"""
+    data = request.json
+    if not data:
+        return jsonify({'error': 'no data'})
+    try:
+        import paramiko
+        ip = data.get('ip')
+        port = int(data.get('port', 22))
+        user = data.get('user')
+        password = data.get('pass')
+        if not all([ip, user, password]):
+            return jsonify({'status': 'error', 'message': '请填写完整信息'})
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(ip, port=port, username=user, password=password, timeout=10)
+        stdin, stdout, stderr = client.exec_command('uname -a')
+        result = stdout.read().decode().strip()
+        client.close()
+        return jsonify({'status': 'ok', 'message': '连接成功', 'system': result})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
+@app.route('/api/deploy/start', methods=['POST'])
+def deploy_start():
+    """一键部署 NovaGrid"""
+    data = request.json
+    if not data:
+        return jsonify({'error': 'no data'})
+    try:
+        from deploy_worker import deploy_novagrid
+        result = deploy_novagrid(data)
+        return jsonify(result)
+    except ImportError:
+        return jsonify({'status': 'error', 'message': '部署模块未找到'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
+
 @app.route('/api/control', methods=['POST'])
 def api_control():
     action = request.json.get('action')
@@ -543,4 +627,5 @@ if __name__ == '__main__':
     print(f"  Symbol: {runtime_config['symbol']}, Mode: {runtime_config['mode']}")
     print("=" * 50 + "\n")
     _auto_start()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    port = int(os.environ.get('PORT', '5000'))
+    app.run(host='0.0.0.0', port=port, debug=False)

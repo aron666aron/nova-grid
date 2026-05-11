@@ -45,6 +45,7 @@ class GridBot:
         self.amount_per_grid = g.get("amount_per_grid", 200)
         self.check_interval = g.get("check_interval", 3)
         self.side_mode = g.get("side", "dual")  # "long" | "short" | "dual"
+        self.take_profit_grids = g.get("take_profit_grids", 2)  # +N 格止盈
 
         # 网格数据
         self.center_price = 0.108
@@ -65,8 +66,6 @@ class GridBot:
 
         self.state_file = os.path.join(DATA_DIR, f"grid_{self.symbol}_dual.json")
         self._load_state()
-        # 标记：是否已将 OKX 持仓同步到网格
-        self._okx_synced = False
 
     # ────────────────────────────────
     # 网格管理
@@ -166,8 +165,65 @@ class GridBot:
     # 核心 TICK
     # ────────────────────────────────
 
+    def _sync_okx_real_positions(self):
+        """同步 OKX 真实持仓到 self.positions，清理 phantom positions"""
+        if self.paper_mode:
+            return
+        try:
+            from okx_trade import _request
+            swap_id = SWAP_INSTRUMENTS.get(self.symbol, self.symbol)
+            r = _request('GET', f'/api/v5/account/positions?instId={swap_id}')
+            if r.get('code') != '0':
+                return
+
+            # 从 OKX 建立真实持仓集合
+            okx_positions = {}
+            for p in r.get('data', []):
+                sz = float(p.get('pos', 0))
+                if sz <= 0:
+                    continue
+                amount = int(sz * 1000)
+                entry = float(p.get('avgPx', 0))
+                side = p['posSide'].upper()
+                # 找最近的网格索引
+                if self.grids:
+                    diffs = [abs(entry - g) for g in self.grids]
+                    idx = diffs.index(min(diffs))
+                else:
+                    idx = 0
+                okx_positions[str(idx)] = {
+                    'side': side, 'entry_price': entry, 'amount': amount,
+                    'time': datetime.now().isoformat(), 'fee': 0,
+                    'live': True, 'synced_from_okx': True,
+                }
+
+            # 删除 bot 中有但 OKX 没有的 phantom positions（限价单未成交）
+            phantom = [k for k in self.positions if k not in okx_positions]
+            for k in phantom:
+                pos = self.positions[k]
+                logger.info(f"[OKX同步] 移除幽灵持仓 格{k} {pos['side']} @{pos['entry_price']}（OKX无此仓）")
+                del self.positions[k]
+
+            # 添加 OKX 中有但 bot 没有的持仓
+            missing = [k for k in okx_positions if k not in self.positions]
+            for k in missing:
+                self.positions[k] = okx_positions[k]
+                logger.info(f"[OKX同步] 添加遗漏持仓 格{k} {okx_positions[k]['side']} @{okx_positions[k]['entry_price']}")
+
+            # 更新已有持仓的 entry_price（如果有偏差）
+            for k in set(self.positions.keys()) & set(okx_positions.keys()):
+                if abs(self.positions[k]['entry_price'] - okx_positions[k]['entry_price']) > 0.0001:
+                    self.positions[k]['entry_price'] = okx_positions[k]['entry_price']
+                    self.positions[k]['synced_from_okx'] = True
+
+        except Exception as e:
+            logger.error(f"OKX持仓同步异常: {e}")
+
     def run_tick(self):
         """执行一次 tick"""
+        # 同步 OKX 真实持仓（每次 tick）
+        self._sync_okx_real_positions()
+
         market = get_price(self.symbol)
         if not market:
             logger.error("获取行情失败")
@@ -213,16 +269,9 @@ class GridBot:
             if self._need_rebuild or not self.grids:
                 self._update_grids(current_price)
                 self._need_rebuild = False
-                # 网格建好后：从 OKX 同步真实持仓
-                if not self.paper_mode and not self._okx_synced:
-                    self._sync_positions_from_okx()
-                    self._okx_synced = True
-            # 强平所有旧持仓（仅非OKX同步的持仓）
-            for key in list(self.positions.keys()):
-                pos = self.positions[key]
-                if pos.get('synced_from_okx'):
-                    continue  # OKX 真实持仓不强制平仓
-                self._force_close(int(key), current_price)
+                # 网格重建后同步 OKX 真实持仓
+                self._sync_okx_real_positions()
+            # 网格重建不清仓 — 已有持仓继续持有，新网格只影响新开仓
             self.prev_price = current_price
             return result
 
@@ -232,6 +281,11 @@ class GridBot:
             return result
 
         fee_rate = FEES["default"]
+        try:
+            account_fee = _get_account_fee_rate(self.symbol)
+            fee_rate = min(account_fee, FEES["default"])
+        except:
+            pass
 
         # 获取信号过滤值
         try:
@@ -243,17 +297,18 @@ class GridBot:
             signal_confidence = "low"
 
         # ─── 1️⃣ 平仓检查：LONG 涨到目标位 / SHORT 跌到目标位 ───
+        tp = self.take_profit_grids
         for key in list(self.positions.keys()):
             pos = self.positions[key]
             entry_grid = int(key)
             side = pos["side"]
 
             if side == "LONG":
-                target = entry_grid + 1
+                target = entry_grid + tp
                 if curr_idx >= target and target < len(self.grids):
                     self._close_long(entry_grid, current_price, fee_rate, result)
             elif side == "SHORT":
-                target = entry_grid - 1
+                target = entry_grid - tp
                 if curr_idx <= target and target >= 0:
                     self._close_short(entry_grid, current_price, fee_rate, result)
 
@@ -266,27 +321,17 @@ class GridBot:
                     # 价格下跌 → 检查 LONG 入场
                     for idx in range(curr_idx, prev_idx + 1):
                         if idx in self.long_indices and str(idx) not in self.positions:
-                            # 多因子过滤：强空头信号时不加多仓
-                            if signal_bias < -0.5:
+                            # 趋势过滤：空头趋势下不开多
+                            if signal_bias < -0.3:
                                 continue
-                            if signal_bias < -0.3 and signal_confidence == "high":
-                                continue
-                            if signal_bias < -0.4:
-                                if idx % 2 == 0:
-                                    continue
                             self._open_long(idx, self.grids[idx], fee_rate, result)
                 else:
                     # 价格上涨 → 检查 SHORT 入场
                     for idx in range(prev_idx + 1, curr_idx + 1):
                         if idx in self.short_indices and str(idx) not in self.positions:
-                            # 多因子过滤：强多头信号时不加空仓
-                            if signal_bias > 0.5:
+                            # 趋势过滤：多头趋势下不开空
+                            if signal_bias > 0.3:
                                 continue
-                            if signal_bias > 0.3 and signal_confidence == "high":
-                                continue
-                            if signal_bias > 0.4:
-                                if idx % 2 == 0:
-                                    continue
                             self._open_short(idx, self.grids[idx], fee_rate, result)
 
         self.prev_price = current_price
@@ -298,7 +343,7 @@ class GridBot:
     # ────────────────────────────────
 
     def _open_long(self, grid_idx, grid_price, fee_rate, result):
-        """开多仓 — 买入"""
+        """开多仓 — 限价单买入（价格到网格才成交）"""
         amount = self.amount_per_grid
         fee = amount * grid_price * fee_rate
         entry_price = grid_price
@@ -308,11 +353,12 @@ class GridBot:
             sz = _get_swap_sz(amount)
             try:
                 set_leverage(swap_id, 3, 'cross')
-                resp = place_order(swap_id, 'buy', sz, ord_type='market',
+                resp = place_order(swap_id, 'buy', sz, ord_type='limit',
+                                   px=round(grid_price, 5),
                                    td_mode='cross', pos_side='long',
                                    paper_mode_override=False)
                 if resp.get('code') == '0':
-                    logger.info(f"[实盘LONG BUY] #{grid_idx} ${grid_price:.5f} {sz}张")
+                    logger.info(f"[LIMIT LONG BUY] #{grid_idx} @ ${grid_price:.5f} {sz}张")
                 else:
                     logger.error(f"实盘开多失败: {resp.get('msg')}")
                     return
@@ -347,9 +393,14 @@ class GridBot:
             swap_id = SWAP_INSTRUMENTS.get(self.symbol, self.symbol)
             sz = _get_swap_sz(amount)
             try:
-                resp = place_order(swap_id, 'sell', sz, ord_type='market',
+                resp = place_order(swap_id, 'sell', sz, ord_type='limit',
+                                   px=round(sell_price, 5),
                                    td_mode='cross', pos_side='long',
                                    paper_mode_override=False)
+                if resp.get('code') != '0':
+                    resp = place_order(swap_id, 'sell', sz, ord_type='market',
+                                       td_mode='cross', pos_side='long',
+                                       paper_mode_override=False)
                 if resp.get('code') != '0':
                     logger.error(f"实盘平多失败: {resp.get('msg')}")
                     self.positions[str(grid_idx)] = pos
@@ -395,7 +446,8 @@ class GridBot:
             sz = _get_swap_sz(amount)
             try:
                 set_leverage(swap_id, 3, 'cross')
-                resp = place_order(swap_id, 'sell', sz, ord_type='market',
+                resp = place_order(swap_id, 'sell', sz, ord_type='limit',
+                                   px=round(grid_price, 5),
                                    td_mode='cross', pos_side='short',
                                    paper_mode_override=False)
                 if resp.get('code') == '0':
@@ -433,15 +485,18 @@ class GridBot:
         if not self.paper_mode and pos.get("live"):
             swap_id = SWAP_INSTRUMENTS.get(self.symbol, self.symbol)
             sz = _get_swap_sz(amount)
+            # 限价单平空（Maker费率）
+            buy_price = self.grids[grid_idx - 1] if grid_idx - 1 >= 0 else current_price
             try:
-                resp = place_order(swap_id, 'buy', sz, ord_type='market',
+                resp = place_order(swap_id, 'buy', sz, ord_type='limit',
+                                   px=round(buy_price, 5),
                                    td_mode='cross', pos_side='short',
                                    paper_mode_override=False)
                 if resp.get('code') != '0':
-                    logger.error(f"实盘平空失败: {resp.get('msg')}")
-                    self.positions[str(grid_idx)] = pos
-                    return
-                logger.info(f"[实盘SHORT BUY] #{grid_idx} ${buy_price:.5f}")
+                    resp = place_order(swap_id, 'buy', sz, ord_type='market',
+                                       td_mode='cross', pos_side='short',
+                                       paper_mode_override=False)
+                logger.info(f"[SHORT BUY close] #{grid_idx} ${buy_price:.5f}")
             except Exception as e:
                 logger.error(f"实盘平空异常: {e}")
                 self.positions[str(grid_idx)] = pos
@@ -599,9 +654,12 @@ class GridBot:
         if "check_interval" in params:
             self.check_interval = int(params["check_interval"])
             changed = True
+        if "take_profit_grids" in params:
+            self.take_profit_grids = int(params["take_profit_grids"])
+            changed = True
         if changed:
             self._need_rebuild = True
-        logger.info(f"参数已更新: grids={self.grid_count} range={self.price_range_pct*100:.1f}% amount={self.amount_per_grid}")
+        logger.info(f"参数已更新: grids={self.grid_count} range={self.price_range_pct*100:.1f}% amount={self.amount_per_grid} tp={self.take_profit_grids}")
 
     def get_status(self):
         try:

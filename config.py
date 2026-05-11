@@ -24,11 +24,12 @@ SYMBOLS = {
 # ─── 双向网格配置（永续合约 USDT-M） ───────────────────────
 GRID = {
     "symbol": "DOGE-USDT",
-    "grid_count": 20,              # 总网格数（下10做多 + 上10做空）
-    "price_range_pct": 0.02,       # ±2% 范围
-    "amount_per_grid": 200,        # 每格数量 (DOGE)
-    "check_interval": 3,           # tick 间隔（秒）
+    "grid_count": 8,              # total grids (4 long + 4 short)
+    "price_range_pct": 0.025,      # +/-2.5% range (0.625% per grid)
+    "amount_per_grid": 30,         # per grid (DOGE)
+    "check_interval": 2,           # tick 间隔（秒），从3缩到2
     "side": "dual",                # "long" | "short" | "dual"
+    "take_profit_grids": 2,        # +N 格止盈
 }
 
 # 手续费（永续合约 USDT-M，maker 挂单费率）
@@ -54,6 +55,5 @@ os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 os.makedirs(BACKTEST_DIR, exist_ok=True)
 
-# 模拟交易模式（首次使用请保持 True）
-# 实盘需修改 Web 页面或手动设为 False
-PAPER_TRADING = True
+# 模拟交易模式（默认开启）
+PAPER_TRADING = False
